@@ -16,6 +16,7 @@ import { gradeRouter } from './modules/grades/grade.routes.js';
 import { muhafadlohRouter } from './modules/muhafadloh/muhafadloh.routes.js';
 import { reportRouter } from './modules/reports/report.routes.js';
 import { certificateRouter } from './modules/certificates/certificate.routes.js';
+import { supportRouter } from './modules/support/support.routes.js';
 
 const app=express();
 app.disable('x-powered-by');
@@ -37,6 +38,7 @@ app.use('/api/grades',gradeRouter);
 app.use('/api/muhafadloh',muhafadlohRouter);
 app.use('/api/reports',reportRouter);
 app.use('/api/certificates',certificateRouter);
+app.use('/api/support',supportRouter);
 app.use((_req,res)=>res.status(404).json({error:'NOT_FOUND'}));
 app.use((error:unknown,_req:express.Request,res:express.Response,_next:express.NextFunction)=>{console.error(error);res.status(500).json({error:'INTERNAL_SERVER_ERROR'});});
 
