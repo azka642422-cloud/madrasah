@@ -1,8 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { ClipboardCheck, Printer, Save, Search } from 'lucide-react';
-import { SesiAbsensi, UserProfile } from '../types';
-import { DATA_SISWA_247 } from '../data/students247Data';
-import { ABSENSI_EXCEL_SEED, KodeAbsensi } from '../data/attendanceSeed';
+import { SesiAbsensi, UserProfile } from './types';
+import { DATA_SISWA_247 } from './students247Data';
+import { ABSENSI_EXCEL_SEED, KodeAbsensi } from './attendanceSeed';
 
 interface AbsensiViewProps {
   session?: SesiAbsensi;
