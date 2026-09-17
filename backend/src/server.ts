@@ -11,6 +11,7 @@ import { teacherRouter } from './modules/teachers/teacher.routes.js';
 import { classRouter } from './modules/classes/class.routes.js';
 import { scheduleRouter } from './modules/schedules/schedule.routes.js';
 import { subjectRouter } from './modules/subjects/subject.routes.js';
+import { attendanceRouter } from './modules/attendance/attendance.routes.js';
 
 const app=express();
 app.disable('x-powered-by');
@@ -27,6 +28,7 @@ app.use('/api/teachers',teacherRouter);
 app.use('/api/classes',classRouter);
 app.use('/api/schedules',scheduleRouter);
 app.use('/api/subjects',subjectRouter);
+app.use('/api/attendance',attendanceRouter);
 app.use((_req,res)=>res.status(404).json({error:'NOT_FOUND'}));
 app.use((error:unknown,_req:express.Request,res:express.Response,_next:express.NextFunction)=>{console.error(error);res.status(500).json({error:'INTERNAL_SERVER_ERROR'});});
 
