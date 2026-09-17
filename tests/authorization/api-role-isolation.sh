@@ -3,6 +3,7 @@ set -euo pipefail
 
 API="${API_URL:-http://127.0.0.1:3000}"
 DB="${DB_NAME:-madrasah_ci}"
+ORIGIN="${FRONTEND_ORIGIN:-http://127.0.0.1:5173}"
 PASS='TestPassword123!'
 HASH=$(cd backend && node --input-type=module -e "import bcrypt from 'bcrypt'; console.log(await bcrypt.hash(process.argv[1],10))" "$PASS")
 
@@ -28,12 +29,12 @@ jar(){ echo "/tmp/madin-$1.cookies"; }
 login(){
   local user="$1"
   local code
-  code=$(curl -sS -o /tmp/login.json -w '%{http_code}' -c "$(jar "$user")" -H 'Content-Type: application/json' -d "{\"username\":\"$user\",\"password\":\"$PASS\"}" "$API/api/auth/login")
+  code=$(curl -sS -o /tmp/login.json -w '%{http_code}' -c "$(jar "$user")" -H "Origin: $ORIGIN" -H 'Content-Type: application/json' -d "{\"username\":\"$user\",\"password\":\"$PASS\"}" "$API/api/auth/login")
   test "$code" = 200 || { cat /tmp/login.json; echo "login $user expected 200 got $code" >&2; exit 1; }
 }
 expect(){
   local expected="$1" user="$2" method="$3" path="$4" body="${5:-}"
-  local args=(-sS -o /tmp/response.json -w '%{http_code}' -b "$(jar "$user")" -X "$method")
+  local args=(-sS -o /tmp/response.json -w '%{http_code}' -b "$(jar "$user")" -X "$method" -H "Origin: $ORIGIN")
   if [ -n "$body" ]; then args+=(-H 'Content-Type: application/json' -d "$body"); fi
   local code
   code=$(curl "${args[@]}" "$API$path")
