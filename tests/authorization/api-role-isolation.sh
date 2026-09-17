@@ -56,38 +56,27 @@ SUBJECT=$(mysql -h "${DB_HOST:-127.0.0.1}" -P "${DB_PORT:-3306}" -u "${DB_USER:-
 STUDENT1=$(mysql -h "${DB_HOST:-127.0.0.1}" -P "${DB_PORT:-3306}" -u "${DB_USER:-root}" -N -B "$DB" -e "SELECT id FROM students WHERE nis='T-NIS-1'")
 STUDENT2=$(mysql -h "${DB_HOST:-127.0.0.1}" -P "${DB_PORT:-3306}" -u "${DB_USER:-root}" -N -B "$DB" -e "SELECT id FROM students WHERE nis='T-NIS-2'")
 
-# Attendance and grades: direct class/student ID manipulation must not bypass Guru scope.
 expect 200 test-guru GET "/api/attendance/class/$CLASS1?from=2026-09-01&to=2026-09-30"
 expect 403 test-guru GET "/api/attendance/class/$CLASS2?from=2026-09-01&to=2026-09-30"
 expect 200 test-guru GET "/api/grades/class/$CLASS1/subject/$SUBJECT?academicYearId=$YEAR_ID&semester=GANJIL"
 expect 403 test-guru GET "/api/grades/class/$CLASS2/subject/$SUBJECT?academicYearId=$YEAR_ID&semester=GANJIL"
 expect 403 test-guru PUT '/api/attendance' "{\"studentId\":$STUDENT2,\"attendanceDate\":\"2026-09-10\",\"status\":\"H\"}"
 expect 403 test-guru PUT '/api/grades' "{\"studentId\":$STUDENT2,\"subjectId\":$SUBJECT,\"academicYearId\":$YEAR_ID,\"semester\":\"GANJIL\",\"score\":90}"
-
-# Muhafadloh: M1 remains scoped to assigned/homeroom classes; Santri can only use self endpoint.
 expect 200 test-guru GET "/api/muhafadloh/class/$CLASS1?academicYearId=$YEAR_ID"
 expect 403 test-guru GET "/api/muhafadloh/class/$CLASS2?academicYearId=$YEAR_ID"
 expect 403 test-guru PUT '/api/muhafadloh' "{\"studentId\":$STUDENT2,\"academicYearId\":$YEAR_ID,\"execution\":\"m1\",\"value\":8}"
 expect 200 test-santri GET "/api/muhafadloh/student/me?academicYearId=$YEAR_ID"
 expect 403 test-santri GET "/api/muhafadloh/class/$CLASS1?academicYearId=$YEAR_ID"
-
-# Raport: Guru is not a homeroom teacher in this fixture, therefore cannot draft another student's report. Santri sees published reports only through self identity.
 expect 403 test-guru POST '/api/reports/draft' "{\"studentId\":$STUDENT2,\"academicYearId\":$YEAR_ID,\"semester\":\"GANJIL\"}"
 expect 200 test-santri GET '/api/reports/student/me'
 expect 403 test-santri POST '/api/reports/draft' "{\"studentId\":$STUDENT1,\"academicYearId\":$YEAR_ID,\"semester\":\"GANJIL\"}"
-
-# Ijazah: only certificate managers may mutate; Santri can only read their own issued certificate list.
 expect 403 test-guru POST '/api/certificates/draft' "{\"studentId\":$STUDENT1,\"academicYearId\":$YEAR_ID,\"graduationStatus\":\"PENDING\"}"
 expect 403 test-santri POST '/api/certificates/draft' "{\"studentId\":$STUDENT1,\"academicYearId\":$YEAR_ID,\"graduationStatus\":\"PENDING\"}"
 expect 200 test-santri GET '/api/certificates/student/me'
-
-# Private student photos: Guru may reach an assigned student's resource but not another class; Santri may only reach own photo.
 expect 404 test-guru GET "/api/storage/students/$STUDENT1/photo"
 expect 403 test-guru GET "/api/storage/students/$STUDENT2/photo"
 expect 404 test-santri GET "/api/storage/students/$STUDENT1/photo"
 expect 403 test-santri GET "/api/storage/students/$STUDENT2/photo"
-
-# Account administration: Admin can list operational accounts but must not see Super Admin; Guru/Santri cannot list accounts or create privileged accounts.
 expect 200 test-admin GET '/api/users'
 if grep -q 'test-super' /tmp/response.json; then echo 'ADMIN_USER_LIST_LEAKS_SUPER_ADMIN' >&2; exit 1; fi
 expect 200 test-super GET '/api/users'
@@ -96,11 +85,58 @@ expect 403 test-guru GET '/api/users'
 expect 403 test-santri GET '/api/users'
 expect 403 test-admin POST '/api/users' "{\"username\":\"forbidden-super\",\"password\":\"AnotherPassword123!\",\"role\":\"SUPER_ADMIN\"}"
 expect 403 test-guru POST '/api/users' "{\"username\":\"forbidden-admin\",\"password\":\"AnotherPassword123!\",\"role\":\"ADMIN\"}"
-
-# Santri self endpoints resolve identity from authenticated link, while class endpoints remain forbidden.
 expect 200 test-santri GET '/api/attendance/student/me?from=2026-09-01&to=2026-09-30'
 expect 200 test-santri GET "/api/grades/student/me?academicYearId=$YEAR_ID&semester=GANJIL"
 expect 403 test-santri GET "/api/attendance/class/$CLASS1?from=2026-09-01&to=2026-09-30"
 expect 403 test-santri GET "/api/grades/class/$CLASS1/subject/$SUBJECT?academicYearId=$YEAR_ID&semester=GANJIL"
 
-echo 'Extended API role isolation checks passed.'
+# Audit logs are technical Super Admin data only.
+expect 200 test-super GET '/api/audit?limit=10'
+expect 403 test-admin GET '/api/audit?limit=10'
+expect 403 test-guru GET '/api/audit?limit=10'
+expect 403 test-santri GET '/api/audit?limit=10'
+
+# Login writes a successful audit without storing credentials.
+sleep 1
+AUDIT_LOGIN=$(mysql -h "${DB_HOST:-127.0.0.1}" -P "${DB_PORT:-3306}" -u "${DB_USER:-root}" -N -B "$DB" -e "SELECT COUNT(*) FROM audit_logs WHERE action='AUTH.LOGIN' AND user_id=(SELECT id FROM users WHERE username='test-admin')")
+test "$AUDIT_LOGIN" -ge 1 || { echo 'LOGIN_AUDIT_MISSING' >&2; exit 1; }
+CREDENTIAL_LEAK=$(mysql -h "${DB_HOST:-127.0.0.1}" -P "${DB_PORT:-3306}" -u "${DB_USER:-root}" -N -B "$DB" -e "SELECT COUNT(*) FROM audit_logs WHERE CAST(metadata AS CHAR) LIKE '%TestPassword123%' OR CAST(metadata AS CHAR) LIKE '%password%'")
+test "$CREDENTIAL_LEAK" = 0 || { echo 'AUDIT_CONTAINS_CREDENTIAL_DATA' >&2; exit 1; }
+
+# Authority changes revoke already-issued sessions through session_version.
+ADMIN_ID=$(mysql -h "${DB_HOST:-127.0.0.1}" -P "${DB_PORT:-3306}" -u "${DB_USER:-root}" -N -B "$DB" -e "SELECT id FROM users WHERE username='test-admin'")
+expect 204 test-super PATCH "/api/users/$ADMIN_ID" '{"resetPassword":"ResetPassword123!"}'
+expect 401 test-admin GET '/api/auth/me'
+
+# must_change_password permits only me/change-password/logout and blocks application resources.
+login_reset(){
+  local code
+  code=$(curl -sS -o /tmp/login-reset.json -w '%{http_code}' -c "$(jar test-admin-reset)" -H "Origin: $ORIGIN" -H 'Content-Type: application/json' -d '{"username":"test-admin","password":"ResetPassword123!"}' "$API/api/auth/login")
+  test "$code" = 200 || { cat /tmp/login-reset.json; echo "reset login expected 200 got $code" >&2; exit 1; }
+}
+login_reset
+expect 200 test-admin-reset GET '/api/auth/me'
+expect 403 test-admin-reset GET '/api/users'
+expect 204 test-admin-reset POST '/api/auth/change-password' '{"currentPassword":"ResetPassword123!","newPassword":"FinalPassword123!"}'
+# Password change increments session_version and clears cookie; stale session cannot continue.
+expect 401 test-admin-reset GET '/api/auth/me'
+
+# Inactive and locked accounts cannot authenticate, and existing sessions are invalid after status mutation.
+GURU_ID=$(mysql -h "${DB_HOST:-127.0.0.1}" -P "${DB_PORT:-3306}" -u "${DB_USER:-root}" -N -B "$DB" -e "SELECT id FROM users WHERE username='test-guru'")
+expect 204 test-super PATCH "/api/users/$GURU_ID" '{"status":"LOCKED"}'
+expect 401 test-guru GET '/api/auth/me'
+LOCKED_LOGIN=$(curl -sS -o /tmp/locked.json -w '%{http_code}' -H "Origin: $ORIGIN" -H 'Content-Type: application/json' -d "{\"username\":\"test-guru\",\"password\":\"$PASS\"}" "$API/api/auth/login")
+test "$LOCKED_LOGIN" = 401 || { cat /tmp/locked.json; echo "locked login expected 401 got $LOCKED_LOGIN" >&2; exit 1; }
+
+# Logout clears browser session; the same cookie jar can no longer authenticate.
+expect 204 test-santri POST '/api/auth/logout'
+expect 401 test-santri GET '/api/auth/me'
+
+# Dedicated auth audit events must be present after asynchronous best-effort writes settle.
+sleep 1
+for action in AUTH.LOGIN AUTH.PASSWORD_CHANGED AUTH.LOGOUT; do
+  N=$(mysql -h "${DB_HOST:-127.0.0.1}" -P "${DB_PORT:-3306}" -u "${DB_USER:-root}" -N -B "$DB" -e "SELECT COUNT(*) FROM audit_logs WHERE action='$action'")
+  test "$N" -ge 1 || { echo "AUDIT_EVENT_MISSING: $action" >&2; exit 1; }
+done
+
+echo 'Extended API role, session lifecycle, and audit isolation checks passed.'
