@@ -83,3 +83,36 @@ jobs:
           mysql -h 127.0.0.1 -uroot -N -B madrasah_ci -e "SELECT COUNT(*) FROM role_permissions rp JOIN roles r ON r.id=rp.role_id JOIN permissions p ON p.id=rp.permission_id WHERE r.code='SANTRI' AND p.code IN (${IMPORTS});" | grep -qx '0'
           mysql -h 127.0.0.1 -uroot -N -B madrasah_ci -e "SELECT COUNT(*) FROM role_permissions rp JOIN roles r ON r.id=rp.role_id JOIN permissions p ON p.id=rp.permission_id WHERE r.code='ADMIN' AND p.code IN ('system.settings.manage','integrations.manage','app.configuration.manage','feature.configuration.manage','system.audit.read','superadmin.accounts.manage');" | grep -qx '0'
           mysql -h 127.0.0.1 -uroot -N -B madrasah_ci -e "SELECT COUNT(*) FROM role_permissions rp JOIN roles r ON r.id=rp.role_id JOIN permissions p ON p.id=rp.permission_id WHERE r.code='SANTRI' AND p.code<>'own.academic.read';" | grep -qx '0'
+
+      - name: Start API for authorization integration tests
+        env:
+          NODE_ENV: test
+          PORT: 3000
+          FRONTEND_ORIGIN: http://127.0.0.1:5173
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_NAME: madrasah_ci
+          DB_USER: root
+          DB_PASSWORD: root
+          AUTH_JWT_SECRET: ci-only-authorization-secret-0123456789abcdef
+          AUTH_COOKIE_NAME: madin_session
+          AUTH_TOKEN_MINUTES: 60
+          MYSQL_PWD: root
+        run: |
+          nohup node backend/dist/server.js >/tmp/madrasah-api.log 2>&1 &
+          for i in {1..20}; do
+            if curl -fsS http://127.0.0.1:3000/api/health >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/madrasah-api.log
+          exit 1
+
+      - name: Verify live API cross-role and IDOR isolation
+        env:
+          MYSQL_PWD: root
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_NAME: madrasah_ci
+          DB_USER: root
+          API_URL: http://127.0.0.1:3000
+        run: bash tests/authorization/api-role-isolation.sh
