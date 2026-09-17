@@ -5,9 +5,9 @@ import { Navbar } from './Navbar';
 import { MobileNav } from './MobileNav';
 import { GlobalSearchModal } from './GlobalSearchModal';
 import { LoginView } from './LoginView';
-import { DashboardGuru } from './DashboardGuru';
-import { DashboardSiswa } from './DashboardSiswa';
-import { DashboardAdmin } from './DashboardAdmin';
+import { DashboardGuru } from './DashboardGuruProduction';
+import { DashboardSiswa } from './DashboardSiswaProduction';
+import { DashboardAdmin } from './DashboardAdminProduction';
 import { AbsensiView } from './AbsensiView';
 import { NilaiView } from './NilaiView';
 import { JadwalView } from './JadwalView';
@@ -29,10 +29,10 @@ import { KritikSaranView } from './KritikSaranView';
 import { PeraturanGuruView } from './PeraturanGuruView';
 import { storageService } from './storageServiceProduction';
 
-const normalizeRole = (role: UserRole): 'Admin' | 'Guru' | 'Siswa' => {
+const normalizeRole = (role: UserRole | string): UserRole => {
   const value = String(role).toLowerCase();
   if (value === 'admin') return 'Admin';
-  if (value === 'siswa') return 'Siswa';
+  if (value === 'siswa' || value === 'santri') return 'Siswa';
   return 'Guru';
 };
 const accountToProfile = (account: AppUserAccount): UserProfile => ({ id:account.id,name:account.name,role:normalizeRole(account.role),roleTitle:account.roleTitle,nipOrNis:account.nipOrNis,avatar:'',email:account.email||'',kelas:account.kelas,unreadNotifications:0 });
@@ -60,7 +60,7 @@ export default function App() {
   if(!activeAccount||!currentUser)return <LoginView onLogin={handleLogin}/>;
 
   const renderCurrentView=()=>{switch(currentPage){
-    case 'dashboard': if(normalizedRole==='Admin')return <DashboardAdmin user={currentUser} onNavigate={setCurrentPage} onSwitchRole={()=>{}} absensiSession={absensiSession}/>; if(normalizedRole==='Siswa')return <DashboardSiswa user={currentUser} onNavigate={setCurrentPage}/>; return <DashboardGuru user={currentUser} onNavigate={setCurrentPage} absensiSession={absensiSession}/>;
+    case 'dashboard': if(normalizedRole==='Admin')return <DashboardAdmin user={currentUser} onNavigate={setCurrentPage} absensiSession={absensiSession}/>; if(normalizedRole==='Siswa')return <DashboardSiswa user={currentUser} onNavigate={setCurrentPage}/>; return <DashboardGuru user={currentUser} onNavigate={setCurrentPage} absensiSession={absensiSession}/>;
     case 'absensi': return <AbsensiView session={absensiSession} onSaveSession={handleSaveAbsensiSession} userRole={normalizedRole} currentUser={currentUser}/>;
     case 'nilai': return <NilaiView userRole={normalizedRole} currentUser={currentUser}/>;
     case 'jadwal': return <JadwalView userRole={normalizedRole}/>;
