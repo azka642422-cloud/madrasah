@@ -1,10 +1,12 @@
 -- Structural authorization seed only. No user/password/demo account is created.
+-- Upgrade-safe: migrations may already have introduced roles/permissions before this seed runs.
 
 INSERT INTO roles (code,name) VALUES
 ('SUPER_ADMIN','Super Admin'),
 ('ADMIN','Admin'),
 ('GURU','Guru'),
-('SANTRI','Santri');
+('SANTRI','Santri')
+ON DUPLICATE KEY UPDATE name=VALUES(name);
 
 INSERT INTO permissions (code,description) VALUES
 ('students.manage','Kelola master santri'),
@@ -33,14 +35,15 @@ INSERT INTO permissions (code,description) VALUES
 ('app.configuration.manage','Kelola konfigurasi aplikasi/PWA/mobile'),
 ('feature.configuration.manage','Kelola konfigurasi fitur teknis'),
 ('system.audit.read','Baca audit sistem'),
-('superadmin.accounts.manage','Kelola akun Super Admin');
+('superadmin.accounts.manage','Kelola akun Super Admin')
+ON DUPLICATE KEY UPDATE description=VALUES(description);
 
 -- SUPER_ADMIN receives all permissions.
-INSERT INTO role_permissions (role_id,permission_id)
+INSERT IGNORE INTO role_permissions (role_id,permission_id)
 SELECT r.id,p.id FROM roles r CROSS JOIN permissions p WHERE r.code='SUPER_ADMIN';
 
 -- ADMIN: operational authority only. No technical/super-admin account permissions.
-INSERT INTO role_permissions (role_id,permission_id)
+INSERT IGNORE INTO role_permissions (role_id,permission_id)
 SELECT r.id,p.id FROM roles r JOIN permissions p ON p.code IN (
  'students.manage','students.import.manage','teachers.manage','classes.manage','schedules.manage',
  'attendance.manage','attendance.import.manage','grades.manage','grades.import.manage',
@@ -51,13 +54,13 @@ SELECT r.id,p.id FROM roles r JOIN permissions p ON p.code IN (
 
 -- GURU permissions remain subject to server-side assignment/homeroom scope.
 -- Global official-source import permissions are intentionally excluded.
-INSERT INTO role_permissions (role_id,permission_id)
+INSERT IGNORE INTO role_permissions (role_id,permission_id)
 SELECT r.id,p.id FROM roles r JOIN permissions p ON p.code IN (
  'teaching.scope.read','attendance.manage','grades.manage','muhafadloh.manage',
  'reports.manage','feedback.create'
 ) WHERE r.code='GURU';
 
 -- SANTRI: backend must resolve user -> student; never accept arbitrary student_id as authority.
-INSERT INTO role_permissions (role_id,permission_id)
+INSERT IGNORE INTO role_permissions (role_id,permission_id)
 SELECT r.id,p.id FROM roles r JOIN permissions p ON p.code='own.academic.read'
 WHERE r.code='SANTRI';
