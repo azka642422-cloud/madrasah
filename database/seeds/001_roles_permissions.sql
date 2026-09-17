@@ -8,12 +8,16 @@ INSERT INTO roles (code,name) VALUES
 
 INSERT INTO permissions (code,description) VALUES
 ('students.manage','Kelola master santri'),
+('students.import.manage','Kelola rekonsiliasi master santri dari sumber Word resmi'),
 ('teachers.manage','Kelola master guru'),
 ('classes.manage','Kelola kelas'),
 ('schedules.manage','Kelola jadwal dan pengampu'),
 ('attendance.manage','Kelola absensi sesuai kewenangan'),
+('attendance.import.manage','Kelola import absensi Excel global'),
 ('grades.manage','Kelola nilai sesuai kewenangan'),
+('grades.import.manage','Kelola import nilai resmi global'),
 ('muhafadloh.manage','Kelola Muhafadloh sesuai kewenangan'),
+('muhafadloh.import.manage','Kelola import Muhafadloh resmi global'),
 ('reports.manage','Kelola/publikasikan raport sesuai kewenangan'),
 ('certificates.manage','Kelola/penerbitan ijazah'),
 ('documents.manage','Kelola dokumen'),
@@ -38,13 +42,15 @@ SELECT r.id,p.id FROM roles r CROSS JOIN permissions p WHERE r.code='SUPER_ADMIN
 -- ADMIN: operational authority only. No technical/super-admin account permissions.
 INSERT INTO role_permissions (role_id,permission_id)
 SELECT r.id,p.id FROM roles r JOIN permissions p ON p.code IN (
- 'students.manage','teachers.manage','classes.manage','schedules.manage',
- 'attendance.manage','grades.manage','muhafadloh.manage','reports.manage',
+ 'students.manage','students.import.manage','teachers.manage','classes.manage','schedules.manage',
+ 'attendance.manage','attendance.import.manage','grades.manage','grades.import.manage',
+ 'muhafadloh.manage','muhafadloh.import.manage','reports.manage',
  'certificates.manage','documents.manage','announcements.manage',
  'accounts.operational.manage','settings.operational.manage','feedback.manage'
 ) WHERE r.code='ADMIN';
 
 -- GURU permissions remain subject to server-side assignment/homeroom scope.
+-- Global official-source import permissions are intentionally excluded.
 INSERT INTO role_permissions (role_id,permission_id)
 SELECT r.id,p.id FROM roles r JOIN permissions p ON p.code IN (
  'teaching.scope.read','attendance.manage','grades.manage','muhafadloh.manage',
