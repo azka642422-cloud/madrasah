@@ -13,6 +13,7 @@ import { scheduleRouter } from './modules/schedules/schedule.routes.js';
 import { subjectRouter } from './modules/subjects/subject.routes.js';
 import { attendanceRouter } from './modules/attendance/attendance.routes.js';
 import { gradeRouter } from './modules/grades/grade.routes.js';
+import { muhafadlohRouter } from './modules/muhafadloh/muhafadloh.routes.js';
 
 const app=express();
 app.disable('x-powered-by');
@@ -31,6 +32,7 @@ app.use('/api/schedules',scheduleRouter);
 app.use('/api/subjects',subjectRouter);
 app.use('/api/attendance',attendanceRouter);
 app.use('/api/grades',gradeRouter);
+app.use('/api/muhafadloh',muhafadlohRouter);
 app.use((_req,res)=>res.status(404).json({error:'NOT_FOUND'}));
 app.use((error:unknown,_req:express.Request,res:express.Response,_next:express.NextFunction)=>{console.error(error);res.status(500).json({error:'INTERNAL_SERVER_ERROR'});});
 
