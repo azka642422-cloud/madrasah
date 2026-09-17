@@ -27,8 +27,7 @@ SQL
 
 jar(){ echo "/tmp/madin-$1.cookies"; }
 login(){
-  local user="$1"
-  local code
+  local user="$1" code
   code=$(curl -sS -o /tmp/login.json -w '%{http_code}' -c "$(jar "$user")" -H "Origin: $ORIGIN" -H 'Content-Type: application/json' -d "{\"username\":\"$user\",\"password\":\"$PASS\"}" "$API/api/auth/login")
   test "$code" = 200 || { cat /tmp/login.json; echo "login $user expected 200 got $code" >&2; exit 1; }
 }
@@ -43,7 +42,6 @@ expect(){
 
 for u in test-super test-admin test-guru test-santri; do login "$u"; done
 
-# Global imports: administrators may reach the resource layer (404 for nonexistent batch), Guru/Santri must be denied at authorization middleware.
 for prefix in students attendance grades muhafadloh; do
   expect 404 test-super GET "/api/imports/$prefix/999999/review"
   expect 404 test-admin GET "/api/imports/$prefix/999999/review"
@@ -55,9 +53,10 @@ YEAR_ID=$(mysql -h "${DB_HOST:-127.0.0.1}" -P "${DB_PORT:-3306}" -u "${DB_USER:-
 CLASS1=$(mysql -h "${DB_HOST:-127.0.0.1}" -P "${DB_PORT:-3306}" -u "${DB_USER:-root}" -N -B "$DB" -e "SELECT id FROM classes WHERE code='T1'")
 CLASS2=$(mysql -h "${DB_HOST:-127.0.0.1}" -P "${DB_PORT:-3306}" -u "${DB_USER:-root}" -N -B "$DB" -e "SELECT id FROM classes WHERE code='T2'")
 SUBJECT=$(mysql -h "${DB_HOST:-127.0.0.1}" -P "${DB_PORT:-3306}" -u "${DB_USER:-root}" -N -B "$DB" -e "SELECT id FROM subjects WHERE code='T-SUB'")
+STUDENT1=$(mysql -h "${DB_HOST:-127.0.0.1}" -P "${DB_PORT:-3306}" -u "${DB_USER:-root}" -N -B "$DB" -e "SELECT id FROM students WHERE nis='T-NIS-1'")
 STUDENT2=$(mysql -h "${DB_HOST:-127.0.0.1}" -P "${DB_PORT:-3306}" -u "${DB_USER:-root}" -N -B "$DB" -e "SELECT id FROM students WHERE nis='T-NIS-2'")
 
-# Guru may read assigned class but not another class; direct ID manipulation must not bypass scope.
+# Attendance and grades: direct class/student ID manipulation must not bypass Guru scope.
 expect 200 test-guru GET "/api/attendance/class/$CLASS1?from=2026-09-01&to=2026-09-30"
 expect 403 test-guru GET "/api/attendance/class/$CLASS2?from=2026-09-01&to=2026-09-30"
 expect 200 test-guru GET "/api/grades/class/$CLASS1/subject/$SUBJECT?academicYearId=$YEAR_ID&semester=GANJIL"
@@ -65,10 +64,43 @@ expect 403 test-guru GET "/api/grades/class/$CLASS2/subject/$SUBJECT?academicYea
 expect 403 test-guru PUT '/api/attendance' "{\"studentId\":$STUDENT2,\"attendanceDate\":\"2026-09-10\",\"status\":\"H\"}"
 expect 403 test-guru PUT '/api/grades' "{\"studentId\":$STUDENT2,\"subjectId\":$SUBJECT,\"academicYearId\":$YEAR_ID,\"semester\":\"GANJIL\",\"score\":90}"
 
-# Santri self endpoints resolve identity from the authenticated link, while class/admin endpoints remain forbidden.
+# Muhafadloh: M1 remains scoped to assigned/homeroom classes; Santri can only use self endpoint.
+expect 200 test-guru GET "/api/muhafadloh/class/$CLASS1?academicYearId=$YEAR_ID"
+expect 403 test-guru GET "/api/muhafadloh/class/$CLASS2?academicYearId=$YEAR_ID"
+expect 403 test-guru PUT '/api/muhafadloh' "{\"studentId\":$STUDENT2,\"academicYearId\":$YEAR_ID,\"execution\":\"m1\",\"value\":8}"
+expect 200 test-santri GET "/api/muhafadloh/student/me?academicYearId=$YEAR_ID"
+expect 403 test-santri GET "/api/muhafadloh/class/$CLASS1?academicYearId=$YEAR_ID"
+
+# Raport: Guru is not a homeroom teacher in this fixture, therefore cannot draft another student's report. Santri sees published reports only through self identity.
+expect 403 test-guru POST '/api/reports/draft' "{\"studentId\":$STUDENT2,\"academicYearId\":$YEAR_ID,\"semester\":\"GANJIL\"}"
+expect 200 test-santri GET '/api/reports/student/me'
+expect 403 test-santri POST '/api/reports/draft' "{\"studentId\":$STUDENT1,\"academicYearId\":$YEAR_ID,\"semester\":\"GANJIL\"}"
+
+# Ijazah: only certificate managers may mutate; Santri can only read their own issued certificate list.
+expect 403 test-guru POST '/api/certificates/draft' "{\"studentId\":$STUDENT1,\"academicYearId\":$YEAR_ID,\"graduationStatus\":\"PENDING\"}"
+expect 403 test-santri POST '/api/certificates/draft' "{\"studentId\":$STUDENT1,\"academicYearId\":$YEAR_ID,\"graduationStatus\":\"PENDING\"}"
+expect 200 test-santri GET '/api/certificates/student/me'
+
+# Private student photos: Guru may reach an assigned student's resource but not another class; Santri may only reach own photo.
+expect 404 test-guru GET "/api/storage/students/$STUDENT1/photo"
+expect 403 test-guru GET "/api/storage/students/$STUDENT2/photo"
+expect 404 test-santri GET "/api/storage/students/$STUDENT1/photo"
+expect 403 test-santri GET "/api/storage/students/$STUDENT2/photo"
+
+# Account administration: Admin can list operational accounts but must not see Super Admin; Guru/Santri cannot list accounts or create privileged accounts.
+expect 200 test-admin GET '/api/users'
+if grep -q 'test-super' /tmp/response.json; then echo 'ADMIN_USER_LIST_LEAKS_SUPER_ADMIN' >&2; exit 1; fi
+expect 200 test-super GET '/api/users'
+grep -q 'test-super' /tmp/response.json || { echo 'SUPER_ADMIN_USER_LIST_MISSING_SUPER_ADMIN' >&2; exit 1; }
+expect 403 test-guru GET '/api/users'
+expect 403 test-santri GET '/api/users'
+expect 403 test-admin POST '/api/users' "{\"username\":\"forbidden-super\",\"password\":\"AnotherPassword123!\",\"role\":\"SUPER_ADMIN\"}"
+expect 403 test-guru POST '/api/users' "{\"username\":\"forbidden-admin\",\"password\":\"AnotherPassword123!\",\"role\":\"ADMIN\"}"
+
+# Santri self endpoints resolve identity from authenticated link, while class endpoints remain forbidden.
 expect 200 test-santri GET '/api/attendance/student/me?from=2026-09-01&to=2026-09-30'
 expect 200 test-santri GET "/api/grades/student/me?academicYearId=$YEAR_ID&semester=GANJIL"
 expect 403 test-santri GET "/api/attendance/class/$CLASS1?from=2026-09-01&to=2026-09-30"
 expect 403 test-santri GET "/api/grades/class/$CLASS1/subject/$SUBJECT?academicYearId=$YEAR_ID&semester=GANJIL"
 
-echo 'API role isolation checks passed.'
+echo 'Extended API role isolation checks passed.'
