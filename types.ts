@@ -21,6 +21,9 @@ export interface AppUserAccount {
   nipOrNis?: string;
   email?: string;
   kelas?: string;
+  username?: string;
+  status?: string;
+  permissions?: string[];
   [key: string]: unknown;
 }
 
@@ -31,18 +34,17 @@ export interface NotifikasiItem {
   dibaca: boolean;
   tautan?: string;
   tanggal?: string;
+  waktu?: string;
+  tipe?: 'warning' | 'success' | 'info' | string;
   [key: string]: unknown;
 }
 
-/**
- * Transitional attendance-session contract.
- * Attendance matrix persistence will move behind the production API/MySQL layer.
- */
 export interface SesiAbsensi {
   id?: string;
   kelas?: string;
   tanggal?: string;
   tahunAjaran?: string;
   semester?: 'Ganjil' | 'Genap';
+  isCompleted?: boolean;
   [key: string]: unknown;
 }
