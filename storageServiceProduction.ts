@@ -1,13 +1,6 @@
 import type { SesiAbsensi } from './types';
 
-/**
- * Compatibility storage layer.
- *
- * This file restores the missing module required by the current UI so the
- * production-cleanup branch can be migrated incrementally to the server API.
- * It intentionally contains NO demo/default student records. Empty data stays
- * empty until it is supplied by validated institutional data or the API.
- */
+/** Transitional compatibility layer. No demo/default institutional records. */
 const KEYS = {
   students: 'annajiyah_prod_students',
   tahunAjaran: 'annajiyah_prod_tahun_ajaran',
@@ -15,37 +8,34 @@ const KEYS = {
   signatures: 'annajiyah_prod_signatures',
   muhafadzoh: 'annajiyah_prod_muhafadzoh',
   absensiSession: 'annajiyah_prod_absensi_session',
+  ijazahOverrides: 'annajiyah_prod_ijazah_overrides',
 } as const;
 
 const read = <T>(key: string, fallback: T): T => {
   try {
     const raw = localStorage.getItem(key);
     return raw ? (JSON.parse(raw) as T) : fallback;
-  } catch {
-    return fallback;
-  }
+  } catch { return fallback; }
 };
-
-const write = <T>(key: string, value: T): void => {
-  localStorage.setItem(key, JSON.stringify(value));
-};
+const write = <T>(key: string, value: T): void => localStorage.setItem(key, JSON.stringify(value));
 
 export interface ProductionStudent {
   nis: string;
   nama: string;
   kelas: string;
+  tempatLahir?: string;
+  tanggalLahir?: string;
   [key: string]: unknown;
 }
-
 export interface ProductionSignatures {
   namaKepalaMadrasah?: string;
   titimangsaRaport?: string;
   titimangsaIjazah?: string;
   namaPengasuh?: string;
+  nomorIjazahTemplate?: string;
   musrifPerKelas?: Record<string, string>;
   [key: string]: unknown;
 }
-
 export interface ProductionMuhafadzoh {
   nis: string;
   materiMuhafadzoh?: string;
@@ -56,42 +46,38 @@ export interface ProductionMuhafadzoh {
   nilaiMuhafadzoh?: number | null;
   [key: string]: unknown;
 }
+export interface IjazahScore { no: number; mapel: string; angka: number; huruf?: string; }
+export interface IjazahOverride {
+  nomorIjazah?: string;
+  statusKelulusan?: string;
+  tempatLahir?: string;
+  tanggalLahir?: string;
+  tahunPelajaranHijriah?: string;
+  tahunPelajaranMasehi?: string;
+  periodeUjianHijriah?: string;
+  periodeUjianMasehi?: string;
+  tanggalDaftarNilai?: string;
+  nilaiMapel?: IjazahScore[];
+}
+export type IjazahOverrides = Record<string, IjazahOverride>;
 
 export const storageService = {
-  getStudents(): ProductionStudent[] {
-    return read<ProductionStudent[]>(KEYS.students, []);
-  },
-  saveStudents(students: ProductionStudent[]): void {
-    write(KEYS.students, students);
-  },
-  getTahunAjaran(): string {
-    return read<string>(KEYS.tahunAjaran, '');
-  },
-  saveTahunAjaran(value: string): void {
-    write(KEYS.tahunAjaran, value.trim());
-  },
-  getSemester(): 'Ganjil' | 'Genap' {
-    return read<'Ganjil' | 'Genap'>(KEYS.semester, 'Ganjil');
-  },
-  saveSemester(value: 'Ganjil' | 'Genap'): void {
-    write(KEYS.semester, value);
-  },
-  getSignaturesAndMusrif(): ProductionSignatures {
-    return read<ProductionSignatures>(KEYS.signatures, {});
-  },
-  saveSignaturesAndMusrif(value: ProductionSignatures): void {
-    write(KEYS.signatures, value);
-  },
-  getMuhafadzohList(): ProductionMuhafadzoh[] {
-    return read<ProductionMuhafadzoh[]>(KEYS.muhafadzoh, []);
-  },
-  saveMuhafadzohList(value: ProductionMuhafadzoh[]): void {
-    write(KEYS.muhafadzoh, value);
-  },
-  getAbsensiSession(): SesiAbsensi {
-    return read<SesiAbsensi>(KEYS.absensiSession, {} as SesiAbsensi);
-  },
-  saveAbsensiSession(value: SesiAbsensi): void {
-    write(KEYS.absensiSession, value);
+  getStudents: (): ProductionStudent[] => read(KEYS.students, []),
+  saveStudents: (v: ProductionStudent[]): void => write(KEYS.students, v),
+  getTahunAjaran: (): string => read(KEYS.tahunAjaran, ''),
+  saveTahunAjaran: (v: string): void => write(KEYS.tahunAjaran, v.trim()),
+  getSemester: (): 'Ganjil' | 'Genap' => read(KEYS.semester, 'Ganjil'),
+  saveSemester: (v: 'Ganjil' | 'Genap'): void => write(KEYS.semester, v),
+  getSignaturesAndMusrif: (): ProductionSignatures => read(KEYS.signatures, {}),
+  saveSignaturesAndMusrif: (v: ProductionSignatures): void => write(KEYS.signatures, v),
+  getMuhafadzohList: (): ProductionMuhafadzoh[] => read(KEYS.muhafadzoh, []),
+  saveMuhafadzohList: (v: ProductionMuhafadzoh[]): void => write(KEYS.muhafadzoh, v),
+  getAbsensiSession: (): SesiAbsensi => read(KEYS.absensiSession, {} as SesiAbsensi),
+  saveAbsensiSession: (v: SesiAbsensi): void => write(KEYS.absensiSession, v),
+  getIjazahOverrides: (): IjazahOverrides => read(KEYS.ijazahOverrides, {}),
+  saveIjazahOverride(nis: string, value: IjazahOverride): void {
+    const all = read<IjazahOverrides>(KEYS.ijazahOverrides, {});
+    all[nis] = value;
+    write(KEYS.ijazahOverrides, all);
   },
 };
