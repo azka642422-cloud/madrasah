@@ -57,6 +57,11 @@ jobs:
             mysql -h 127.0.0.1 -uroot madrasah_ci < "${migration}"
           done
 
+      - name: Apply structural role and permission seed
+        env:
+          MYSQL_PWD: root
+        run: mysql -h 127.0.0.1 -uroot madrasah_ci < database/seeds/001_roles_permissions.sql
+
       - name: Verify critical final schema
         env:
           MYSQL_PWD: root
@@ -65,3 +70,16 @@ jobs:
           mysql -h 127.0.0.1 -uroot -N -B madrasah_ci -e "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='madrasah_ci' AND TABLE_NAME='users' AND COLUMN_NAME='session_version';" | grep -qx '1'
           mysql -h 127.0.0.1 -uroot -N -B madrasah_ci -e "SELECT COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='madrasah_ci' AND TABLE_NAME='student_enrollments' AND COLUMN_NAME='status';" | grep -q "'WITHDRAWN'"
           mysql -h 127.0.0.1 -uroot -N -B madrasah_ci -e "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA='madrasah_ci' AND TABLE_NAME IN ('academic_terms','import_batches','import_grade_rows');" | grep -qx '3'
+
+      - name: Verify four-role import permission isolation
+        env:
+          MYSQL_PWD: root
+        run: |
+          set -euo pipefail
+          IMPORTS="'students.import.manage','attendance.import.manage','grades.import.manage','muhafadloh.import.manage'"
+          mysql -h 127.0.0.1 -uroot -N -B madrasah_ci -e "SELECT COUNT(*) FROM role_permissions rp JOIN roles r ON r.id=rp.role_id JOIN permissions p ON p.id=rp.permission_id WHERE r.code='SUPER_ADMIN' AND p.code IN (${IMPORTS});" | grep -qx '4'
+          mysql -h 127.0.0.1 -uroot -N -B madrasah_ci -e "SELECT COUNT(*) FROM role_permissions rp JOIN roles r ON r.id=rp.role_id JOIN permissions p ON p.id=rp.permission_id WHERE r.code='ADMIN' AND p.code IN (${IMPORTS});" | grep -qx '4'
+          mysql -h 127.0.0.1 -uroot -N -B madrasah_ci -e "SELECT COUNT(*) FROM role_permissions rp JOIN roles r ON r.id=rp.role_id JOIN permissions p ON p.id=rp.permission_id WHERE r.code='GURU' AND p.code IN (${IMPORTS});" | grep -qx '0'
+          mysql -h 127.0.0.1 -uroot -N -B madrasah_ci -e "SELECT COUNT(*) FROM role_permissions rp JOIN roles r ON r.id=rp.role_id JOIN permissions p ON p.id=rp.permission_id WHERE r.code='SANTRI' AND p.code IN (${IMPORTS});" | grep -qx '0'
+          mysql -h 127.0.0.1 -uroot -N -B madrasah_ci -e "SELECT COUNT(*) FROM role_permissions rp JOIN roles r ON r.id=rp.role_id JOIN permissions p ON p.id=rp.permission_id WHERE r.code='ADMIN' AND p.code IN ('system.settings.manage','integrations.manage','app.configuration.manage','feature.configuration.manage','system.audit.read','superadmin.accounts.manage');" | grep -qx '0'
+          mysql -h 127.0.0.1 -uroot -N -B madrasah_ci -e "SELECT COUNT(*) FROM role_permissions rp JOIN roles r ON r.id=rp.role_id JOIN permissions p ON p.id=rp.permission_id WHERE r.code='SANTRI' AND p.code<>'own.academic.read';" | grep -qx '0'
