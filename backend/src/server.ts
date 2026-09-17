@@ -9,6 +9,8 @@ import { studentRouter } from './modules/students/student.routes.js';
 import { adminStudentRouter } from './modules/students/admin-student.routes.js';
 import { teacherRouter } from './modules/teachers/teacher.routes.js';
 import { classRouter } from './modules/classes/class.routes.js';
+import { scheduleRouter } from './modules/schedules/schedule.routes.js';
+import { subjectRouter } from './modules/subjects/subject.routes.js';
 
 const app=express();
 app.disable('x-powered-by');
@@ -23,6 +25,8 @@ app.use('/api/student',studentRouter);
 app.use('/api/admin/students',adminStudentRouter);
 app.use('/api/teachers',teacherRouter);
 app.use('/api/classes',classRouter);
+app.use('/api/schedules',scheduleRouter);
+app.use('/api/subjects',subjectRouter);
 app.use((_req,res)=>res.status(404).json({error:'NOT_FOUND'}));
 app.use((error:unknown,_req:express.Request,res:express.Response,_next:express.NextFunction)=>{console.error(error);res.status(500).json({error:'INTERNAL_SERVER_ERROR'});});
 
