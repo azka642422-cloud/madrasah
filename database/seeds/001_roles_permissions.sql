@@ -21,6 +21,7 @@ INSERT INTO permissions (code,description) VALUES
 ('muhafadloh.manage','Kelola Muhafadloh sesuai kewenangan'),
 ('muhafadloh.import.manage','Kelola import Muhafadloh resmi global'),
 ('reports.manage','Kelola/publikasikan raport sesuai kewenangan'),
+('report.signatures.manage','Kelola aset PDF tanda tangan Raport'),
 ('certificates.manage','Kelola/penerbitan ijazah'),
 ('documents.manage','Kelola dokumen'),
 ('announcements.manage','Kelola pengumuman'),
@@ -38,29 +39,24 @@ INSERT INTO permissions (code,description) VALUES
 ('superadmin.accounts.manage','Kelola akun Super Admin')
 ON DUPLICATE KEY UPDATE description=VALUES(description);
 
--- SUPER_ADMIN receives all permissions.
 INSERT IGNORE INTO role_permissions (role_id,permission_id)
 SELECT r.id,p.id FROM roles r CROSS JOIN permissions p WHERE r.code='SUPER_ADMIN';
 
--- ADMIN: operational authority only. No technical/super-admin account permissions.
 INSERT IGNORE INTO role_permissions (role_id,permission_id)
 SELECT r.id,p.id FROM roles r JOIN permissions p ON p.code IN (
  'students.manage','students.import.manage','teachers.manage','classes.manage','schedules.manage',
  'attendance.manage','attendance.import.manage','grades.manage','grades.import.manage',
- 'muhafadloh.manage','muhafadloh.import.manage','reports.manage',
+ 'muhafadloh.manage','muhafadloh.import.manage','reports.manage','report.signatures.manage',
  'certificates.manage','documents.manage','announcements.manage',
  'accounts.operational.manage','settings.operational.manage','feedback.manage'
 ) WHERE r.code='ADMIN';
 
--- GURU permissions remain subject to server-side assignment/homeroom scope.
--- Global official-source import permissions are intentionally excluded.
 INSERT IGNORE INTO role_permissions (role_id,permission_id)
 SELECT r.id,p.id FROM roles r JOIN permissions p ON p.code IN (
  'teaching.scope.read','attendance.manage','grades.manage','muhafadloh.manage',
  'reports.manage','feedback.create'
 ) WHERE r.code='GURU';
 
--- SANTRI: backend must resolve user -> student; never accept arbitrary student_id as authority.
 INSERT IGNORE INTO role_permissions (role_id,permission_id)
 SELECT r.id,p.id FROM roles r JOIN permissions p ON p.code='own.academic.read'
 WHERE r.code='SANTRI';
