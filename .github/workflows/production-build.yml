@@ -16,6 +16,19 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: madrasah_ci
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -33,3 +46,22 @@ jobs:
 
       - name: Build backend and frontend
         run: npm run build
+
+      - name: Apply database migrations on clean MySQL
+        env:
+          MYSQL_PWD: root
+        run: |
+          set -euo pipefail
+          for migration in database/migrations/*.sql; do
+            echo "Applying ${migration}"
+            mysql -h 127.0.0.1 -uroot madrasah_ci < "${migration}"
+          done
+
+      - name: Verify critical final schema
+        env:
+          MYSQL_PWD: root
+        run: |
+          set -euo pipefail
+          mysql -h 127.0.0.1 -uroot -N -B madrasah_ci -e "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='madrasah_ci' AND TABLE_NAME='users' AND COLUMN_NAME='session_version';" | grep -qx '1'
+          mysql -h 127.0.0.1 -uroot -N -B madrasah_ci -e "SELECT COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='madrasah_ci' AND TABLE_NAME='student_enrollments' AND COLUMN_NAME='status';" | grep -q "'WITHDRAWN'"
+          mysql -h 127.0.0.1 -uroot -N -B madrasah_ci -e "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA='madrasah_ci' AND TABLE_NAME IN ('academic_terms','import_batches','import_grade_rows');" | grep -qx '3'
