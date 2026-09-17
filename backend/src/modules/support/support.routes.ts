@@ -1,0 +1,30 @@
+import { Router } from 'express';
+import { z } from 'zod';
+import { db } from '../../config/db.js';
+import { requireAuthentication } from '../../middleware/authentication.js';
+import { requirePermission,requireRole } from '../../middleware/authorization.js';
+
+export const supportRouter=Router();
+supportRouter.use(requireAuthentication);
+
+supportRouter.get('/calendar',async(_req,res,next)=>{try{const [rows]=await db.query(`SELECT id,title,starts_on,ends_on,event_type,locks_attendance,description FROM calendar_events ORDER BY starts_on`);res.json({events:rows});}catch(e){next(e);}});
+const calendarSchema=z.object({title:z.string().trim().min(1).max(255),startsOn:z.string().date(),endsOn:z.string().date(),eventType:z.enum(['ACADEMIC','HOLIDAY','EXAM','OTHER']),locksAttendance:z.boolean().default(false),description:z.string().trim().max(3000).nullable().optional()}).refine(v=>v.endsOn>=v.startsOn,{message:'Invalid date range'});
+supportRouter.post('/calendar',requirePermission('schedules.manage'),async(req,res,next)=>{try{const p=calendarSchema.parse(req.body);const [r]:any=await db.execute(`INSERT INTO calendar_events(title,starts_on,ends_on,event_type,locks_attendance,description,created_by) VALUES(?,?,?,?,?,?,?)`,[p.title,p.startsOn,p.endsOn,p.eventType,p.locksAttendance,p.description??null,req.auth!.userId]);res.status(201).json({id:r.insertId});}catch(e){next(e);}});
+
+supportRouter.get('/documents',async(req,res,next)=>{try{const role=req.auth!.role;const [rows]=await db.query(`SELECT id,category,title,description,mime_type,file_size,audience,created_at FROM documents WHERE published=1 AND (audience='ALL' OR audience=?) ORDER BY created_at DESC`,[role]);res.json({documents:rows});}catch(e){next(e);}});
+
+supportRouter.get('/announcements',async(req,res,next)=>{try{const role=req.auth!.role;const audience=role==='GURU'?'GURU':role==='SANTRI'?'SANTRI':null;const [rows]=audience?await db.query(`SELECT id,title,body,published_at FROM announcements WHERE published_at IS NOT NULL AND published_at<=NOW() AND audience IN('ALL',?) ORDER BY published_at DESC`,[audience]):await db.query(`SELECT id,title,body,audience,published_at FROM announcements WHERE published_at IS NOT NULL AND published_at<=NOW() ORDER BY published_at DESC`);res.json({announcements:rows});}catch(e){next(e);}});
+const announcementSchema=z.object({title:z.string().trim().min(1).max(255),body:z.string().trim().min(1).max(20000),audience:z.enum(['ALL','GURU','SANTRI']),publish:z.boolean().default(false)});
+supportRouter.post('/announcements',requirePermission('announcements.manage'),async(req,res,next)=>{try{const p=announcementSchema.parse(req.body);const [r]:any=await db.execute(`INSERT INTO announcements(title,body,audience,published_at,created_by) VALUES(?,?,?,${p.publish?'NOW()':'NULL'},?)`,[p.title,p.body,p.audience,req.auth!.userId]);res.status(201).json({id:r.insertId});}catch(e){next(e);}});
+
+supportRouter.get('/notifications/me',async(req,res,next)=>{try{const [rows]=await db.query(`SELECT id,title,message,type,module,entity_id,read_at,created_at FROM notifications WHERE user_id=? ORDER BY created_at DESC LIMIT 100`,[req.auth!.userId]);res.json({notifications:rows});}catch(e){next(e);}});
+supportRouter.patch('/notifications/:id/read',async(req,res,next)=>{try{const id=Number(req.params.id);if(!Number.isSafeInteger(id)||id<=0){res.status(400).json({error:'INVALID_NOTIFICATION_ID'});return;}const [r]:any=await db.execute(`UPDATE notifications SET read_at=COALESCE(read_at,NOW()) WHERE id=? AND user_id=?`,[id,req.auth!.userId]);if(!r.affectedRows){res.status(404).json({error:'NOTIFICATION_NOT_FOUND'});return;}res.status(204).end();}catch(e){next(e);}});
+
+const feedbackSchema=z.object({category:z.enum(['KURIKULUM','KEDISIPLINAN','FASILITAS','SANTRI','LAINNYA']),title:z.string().trim().min(1).max(255),message:z.string().trim().min(1).max(10000)});
+supportRouter.post('/feedback',requireRole('GURU'),async(req,res,next)=>{try{if(!req.auth!.teacherId){res.status(403).json({error:'TEACHER_PROFILE_REQUIRED'});return;}const p=feedbackSchema.parse(req.body);const [r]:any=await db.execute(`INSERT INTO feedback(teacher_id,category,title,message) VALUES(?,?,?,?)`,[req.auth!.teacherId,p.category,p.title,p.message]);res.status(201).json({id:r.insertId});}catch(e){next(e);}});
+supportRouter.get('/feedback/me',requireRole('GURU'),async(req,res,next)=>{try{if(!req.auth!.teacherId){res.status(403).json({error:'TEACHER_PROFILE_REQUIRED'});return;}const [rows]=await db.query(`SELECT id,category,title,message,response,responded_at,read_at,created_at FROM feedback WHERE teacher_id=? ORDER BY created_at DESC`,[req.auth!.teacherId]);res.json({feedback:rows});}catch(e){next(e);}});
+supportRouter.get('/feedback/admin',requirePermission('feedback.manage'),async(_req,res,next)=>{try{const [rows]=await db.query(`SELECT f.id,f.category,f.title,f.message,f.response,f.responded_at,f.read_at,f.created_at,t.name AS teacher_name FROM feedback f JOIN teachers t ON t.id=f.teacher_id ORDER BY f.created_at DESC`);res.json({feedback:rows});}catch(e){next(e);}});
+
+supportRouter.get('/settings/operational',requirePermission('settings.operational.manage'),async(_req,res,next)=>{try{const [rows]=await db.query(`SELECT setting_key,setting_value FROM system_settings WHERE scope='OPERATIONAL' ORDER BY setting_key`);res.json({settings:rows});}catch(e){next(e);}});
+const settingSchema=z.object({key:z.string().trim().regex(/^[a-z0-9._-]{1,150}$/),value:z.unknown()});
+supportRouter.put('/settings/operational',requirePermission('settings.operational.manage'),async(req,res,next)=>{try{const p=settingSchema.parse(req.body);await db.execute(`INSERT INTO system_settings(setting_key,setting_value,scope,updated_by) VALUES(?,?,'OPERATIONAL',?) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value),scope='OPERATIONAL',updated_by=VALUES(updated_by)`,[p.key,JSON.stringify(p.value),req.auth!.userId]);res.status(204).end();}catch(e){next(e);}});
