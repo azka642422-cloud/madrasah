@@ -70,6 +70,7 @@ jobs:
           mysql -h 127.0.0.1 -uroot -N -B madrasah_ci -e "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='madrasah_ci' AND TABLE_NAME='users' AND COLUMN_NAME='session_version';" | grep -qx '1'
           mysql -h 127.0.0.1 -uroot -N -B madrasah_ci -e "SELECT COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='madrasah_ci' AND TABLE_NAME='student_enrollments' AND COLUMN_NAME='status';" | grep -q "'WITHDRAWN'"
           mysql -h 127.0.0.1 -uroot -N -B madrasah_ci -e "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA='madrasah_ci' AND TABLE_NAME IN ('academic_terms','import_batches','import_grade_rows');" | grep -qx '3'
+          mysql -h 127.0.0.1 -uroot -N -B madrasah_ci -e "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='madrasah_ci' AND TABLE_NAME='certificates' AND COLUMN_NAME IN ('hijri_academic_year','hijri_final_exam_period');" | grep -qx '2'
 
       - name: Verify four-role import permission isolation
         env:
@@ -116,3 +117,14 @@ jobs:
           DB_USER: root
           API_URL: http://127.0.0.1:3000
         run: bash tests/authorization/api-role-isolation.sh
+
+      - name: Verify certificate lifecycle against live API and MySQL
+        env:
+          MYSQL_PWD: root
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_NAME: madrasah_ci
+          DB_USER: root
+          API_URL: http://127.0.0.1:3000
+          FRONTEND_ORIGIN: http://127.0.0.1:5173
+        run: bash tests/integration/certificate-lifecycle.sh
