@@ -5,9 +5,9 @@ import { Navbar } from './Navbar';
 import { MobileNav } from './MobileNav';
 import { GlobalSearchModal } from './GlobalSearchModal';
 import { LoginView } from './LoginView';
-import { DashboardGuru } from './DashboardGuru';
-import { DashboardSiswa } from './DashboardSiswa';
-import { DashboardAdmin } from './DashboardAdmin';
+import { DashboardGuru } from './DashboardGuruProduction';
+import { DashboardSiswa } from './DashboardSiswaProduction';
+import { DashboardAdmin } from './DashboardAdminProduction';
 import { AbsensiView } from './AbsensiView';
 import { NilaiView } from './NilaiView';
 import { JadwalView } from './JadwalView';
@@ -17,8 +17,8 @@ import { BukuKerjaGuruView } from './BukuKerjaGuruView';
 import { BukuKerjaSiswaView } from './BukuKerjaSiswaView';
 import { PesantrenInfoView } from './PesantrenInfoView';
 import { SoalUjianView } from './SoalUjianView';
-import { RaportView } from './RaportView';
-import { IjazahView } from './IjazahView';
+import { RaportView } from './RaportViewProduction';
+import { IjazahView } from './IjazahViewProduction';
 import { SiswaDatabaseView } from './SiswaDatabaseViewProduction';
 import { MuhafadzohView } from './MuhafadzohView';
 import { NotifikasiView } from './NotifikasiView';
@@ -29,10 +29,10 @@ import { KritikSaranView } from './KritikSaranView';
 import { PeraturanGuruView } from './PeraturanGuruView';
 import { storageService } from './storageServiceProduction';
 
-const normalizeRole = (role: UserRole): 'Admin' | 'Guru' | 'Siswa' => {
+const normalizeRole = (role: UserRole | string): UserRole => {
   const value = String(role).toLowerCase();
   if (value === 'admin') return 'Admin';
-  if (value === 'siswa') return 'Siswa';
+  if (value === 'siswa' || value === 'santri') return 'Siswa';
   return 'Guru';
 };
 const accountToProfile = (account: AppUserAccount): UserProfile => ({ id:account.id,name:account.name,role:normalizeRole(account.role),roleTitle:account.roleTitle,nipOrNis:account.nipOrNis,avatar:'',email:account.email||'',kelas:account.kelas,unreadNotifications:0 });
@@ -60,7 +60,7 @@ export default function App() {
   if(!activeAccount||!currentUser)return <LoginView onLogin={handleLogin}/>;
 
   const renderCurrentView=()=>{switch(currentPage){
-    case 'dashboard': if(normalizedRole==='Admin')return <DashboardAdmin user={currentUser} onNavigate={setCurrentPage} onSwitchRole={()=>{}} absensiSession={absensiSession}/>; if(normalizedRole==='Siswa')return <DashboardSiswa user={currentUser} onNavigate={setCurrentPage}/>; return <DashboardGuru user={currentUser} onNavigate={setCurrentPage} absensiSession={absensiSession}/>;
+    case 'dashboard': if(normalizedRole==='Admin')return <DashboardAdmin user={currentUser} onNavigate={setCurrentPage} absensiSession={absensiSession}/>; if(normalizedRole==='Siswa')return <DashboardSiswa user={currentUser} onNavigate={setCurrentPage}/>; return <DashboardGuru user={currentUser} onNavigate={setCurrentPage} absensiSession={absensiSession}/>;
     case 'absensi': return <AbsensiView session={absensiSession} onSaveSession={handleSaveAbsensiSession} userRole={normalizedRole} currentUser={currentUser}/>;
     case 'nilai': return <NilaiView userRole={normalizedRole} currentUser={currentUser}/>;
     case 'jadwal': return <JadwalView userRole={normalizedRole}/>;
@@ -78,10 +78,10 @@ export default function App() {
     case 'siswa': return <SiswaDatabaseView userRole={normalizedRole}/>;
     case 'muhafadzoh': return <MuhafadzohView userRole={normalizedRole} currentUser={currentUser}/>;
     case 'pengumuman': return <PengumumanView userRole={normalizedRole}/>;
-    case 'pengaturan': return <PengaturanView currentRole={normalizedRole} currentUser={currentUser} onSwitchRole={()=>{}}/>;
-    case 'notifikasi': return <NotifikasiView notifications={notifications} onMarkRead={handleMarkNotificationRead} onNavigate={setCurrentPage}/>;
-    default: return normalizedRole==='Admin'?<DashboardAdmin user={currentUser} onNavigate={setCurrentPage} onSwitchRole={()=>{}} absensiSession={absensiSession}/>:normalizedRole==='Siswa'?<DashboardSiswa user={currentUser} onNavigate={setCurrentPage}/>:<DashboardGuru user={currentUser} onNavigate={setCurrentPage} absensiSession={absensiSession}/>;
+    case 'notifikasi': return <NotifikasiView notifications={roleNotifications} onMarkRead={handleMarkNotificationRead}/>;
+    case 'pengaturan': return <PengaturanView userRole={normalizedRole} currentUser={currentUser}/>;
+    default: return <DashboardGuru user={currentUser} onNavigate={setCurrentPage} absensiSession={absensiSession}/>;
   }};
 
-  return <div className="min-h-screen bg-[#f8faf8] flex flex-col antialiased"><div className="flex-1 flex overflow-hidden"><Sidebar currentPage={currentPage} onNavigate={setCurrentPage} userRole={normalizedRole} currentUser={currentUser} isOpen={isSidebarOpen} onClose={()=>setIsSidebarOpen(false)} onLogout={handleLogout} unreadNotificationsCount={unreadCount}/><div className="flex-1 flex flex-col min-w-0 overflow-y-auto"><Navbar user={currentUser} userRole={normalizedRole} onNavigate={setCurrentPage} onOpenSearch={()=>setIsSearchModalOpen(true)} onToggleSidebar={()=>setIsSidebarOpen(prev=>!prev)} onSwitchRole={()=>{}} notifications={roleNotifications} onMarkNotificationRead={handleMarkNotificationRead} onSelectNotification={notif=>setCurrentPage((notif.tautan||'notifikasi') as NavPage)} unreadNotificationsCount={unreadCount} onLogout={handleLogout}/><main className="flex-1 px-4 sm:px-6 lg:px-8 py-6 max-w-7xl w-full mx-auto">{renderCurrentView()}</main></div></div><MobileNav currentPage={currentPage} onNavigate={setCurrentPage} unreadCount={unreadCount} userRole={normalizedRole}/><GlobalSearchModal isOpen={isSearchModalOpen} onClose={()=>setIsSearchModalOpen(false)} onNavigate={page=>{setCurrentPage(page);setIsSearchModalOpen(false)}}/></div>;
+  return <div className="min-h-screen bg-slate-50 text-slate-900"><Sidebar currentPage={currentPage} onNavigate={p=>{setCurrentPage(p);setIsSidebarOpen(false)}} userRole={normalizedRole} isOpen={isSidebarOpen} onClose={()=>setIsSidebarOpen(false)}/><div className="lg:pl-64"><Navbar user={currentUser} unreadCount={unreadCount} onLogout={handleLogout} onOpenSearch={()=>setIsSearchModalOpen(true)} onOpenSidebar={()=>setIsSidebarOpen(true)} onNavigate={setCurrentPage}/><main className="mx-auto max-w-[1600px] p-4 pb-24 sm:p-6 lg:p-8 lg:pb-8">{renderCurrentView()}</main><MobileNav currentPage={currentPage} onNavigate={setCurrentPage} userRole={normalizedRole}/></div><GlobalSearchModal isOpen={isSearchModalOpen} onClose={()=>setIsSearchModalOpen(false)} onNavigate={setCurrentPage} userRole={normalizedRole}/></div>;
 }

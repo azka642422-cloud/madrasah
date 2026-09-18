@@ -1,8 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { ClipboardCheck, Printer, Save, Search } from 'lucide-react';
-import { SesiAbsensi, UserProfile } from '../types';
-import { DATA_SISWA_247 } from '../data/students247Data';
-import { ABSENSI_EXCEL_SEED, KodeAbsensi } from '../data/attendanceSeed';
+import { SesiAbsensi, UserProfile } from './types';
+import { ABSENSI_EXCEL_SEED, KodeAbsensi } from './attendanceSeed';
+import { storageService } from './storageServiceProduction';
 
 interface AbsensiViewProps {
   session?: SesiAbsensi;
@@ -52,17 +52,19 @@ export const AbsensiView: React.FC<AbsensiViewProps> = ({ userRole = 'Guru', cur
   const [query, setQuery] = useState('');
   const [cells, setCells] = useState<CellMap>(loadInitial);
   const [saved, setSaved] = useState(false);
+  const studentsMaster = useMemo(() => storageService.getStudents(), []);
 
   const { year, month, label } = months[period];
   const days = new Date(year, month, 0).getDate();
 
-  const students = useMemo(() => DATA_SISWA_247.filter((s) => {
+  const students = useMemo(() => studentsMaster.filter((s) => {
+    const studentClass = s.kelas.replace(/^Kelas\s+/i, '');
     if (isSiswa && ownNis && s.nis.replace(/\D/g,'') !== ownNis) return false;
-    if (!isSiswa && s.kelas !== kelas) return false;
-    if (isSiswa && !ownNis && ownClass && s.kelas !== ownClass) return false;
+    if (!isSiswa && studentClass !== kelas) return false;
+    if (isSiswa && !ownNis && ownClass && studentClass !== ownClass) return false;
     const q = query.trim().toLowerCase();
     return !q || s.nama.toLowerCase().includes(q) || s.nis.toLowerCase().includes(q);
-  }), [kelas, query, isSiswa, ownNis, ownClass]);
+  }), [studentsMaster, kelas, query, isSiswa, ownNis, ownClass]);
 
   const setStatus = (rowClass:string, nis:string, day:number, status:KodeAbsensi|'') => {
     if (!canEdit) return;
@@ -93,6 +95,7 @@ export const AbsensiView: React.FC<AbsensiViewProps> = ({ userRole = 'Guru', cur
       </div>
 
       {saved && <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-800">Perubahan absensi berhasil disimpan.</div>}
+      {studentsMaster.length === 0 && <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">Master santri belum tersedia pada penyimpanan produksi. Absensi tidak membuat nama atau NIS pengganti agar data tetap valid.</div>}
 
       <div className="rounded-2xl border bg-white p-4 grid gap-3 md:grid-cols-3">
         {!isSiswa && <select value={kelas} onChange={(e)=>setKelas(e.target.value)} className="rounded-xl border px-3 py-2.5 text-sm">{kelasList.map(k=><option key={k} value={k}>Kelas {k}</option>)}</select>}
@@ -113,7 +116,7 @@ export const AbsensiView: React.FC<AbsensiViewProps> = ({ userRole = 'Guru', cur
             </thead>
             <tbody>
               {students.map((s,idx)=>{
-                const rowClass = isSiswa ? s.kelas : kelas;
+                const rowClass = s.kelas.replace(/^Kelas\s+/i, '');
                 const sk = count(rowClass,s.nis,'S'), iz = count(rowClass,s.nis,'I'), al = count(rowClass,s.nis,'A');
                 const h = Math.max(0, days - sk - iz - al);
                 return <tr key={s.nis}><td className="border p-2 text-center">{idx+1}</td><td className="border p-2 text-center font-mono">{s.nis}</td><td className="border p-2 font-semibold">{s.nama}</td>{Array.from({length:days},(_,i)=>{const d=i+1; const k=keyOf(rowClass,year,month,d,s.nis); const v=cells[k]||''; return <td key={d} className="border p-0 text-center">{canEdit ? <select aria-label={`Absensi ${s.nama} tanggal ${d}`} value={v} onChange={(e)=>setStatus(rowClass,s.nis,d,e.target.value as KodeAbsensi|'')} className="w-full bg-transparent p-1 text-center font-bold"><option value=""></option><option value="H">H</option><option value="S">S</option><option value="I">I</option><option value="A">A</option></select> : <span className="font-bold">{v}</span>}</td>})}<td className="border p-2 text-center font-bold">{sk}</td><td className="border p-2 text-center font-bold">{iz}</td><td className="border p-2 text-center font-bold">{al}</td><td className="border p-2 text-center font-bold">{h}</td></tr>

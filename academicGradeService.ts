@@ -5,46 +5,137 @@ export interface AcademicMapelScore {
   nilai: number | null;
 }
 
+export interface PengajianSoreScore {
+  no: 1 | 2 | 3;
+  nilai: number | null;
+}
+
+export interface MuhafadzohReportScore {
+  kitab: string;
+  batasan: string;
+  jumlahNilai: number | null;
+  rataRata: number | null;
+}
+
 export interface AcademicGradeRecord {
   nis: string;
   tahunAjaran: string;
   semester: 'Ganjil' | 'Genap';
   mapelScores: AcademicMapelScore[];
-  madrasatulQuran: { kelancaran:number|null; makhroj:number|null; tajwid:number|null; };
-  pengajianSore: number | null;
-  akhlak: string;
+  muhafadzoh: MuhafadzohReportScore;
+  pengajianSore: PengajianSoreScore[];
+  kelakuan: string;
   kerajinan: string;
   kerapian: string;
-  absensi: { sakit:number|null; izin:number|null; alpha:number|null; };
+  absensi: {
+    sakit: number | null;
+    izin: number | null;
+    tanpaKeterangan: number | null;
+  };
   ranking: number | null;
+  jumlahSiswa: number | null;
   catatan: string;
   keputusan: string;
-  musrif: string;
+  waliKelas: string;
 }
 
-const PREFIX='annajiyah_prod_grade_';
-const key=(tahunAjaran:string,semester:'Ganjil'|'Genap',nis:string)=>`${PREFIX}${tahunAjaran}_${semester}_${nis}`;
-const emptyRecord=(nis:string,tahunAjaran:string,semester:'Ganjil'|'Genap',mapelScores:AcademicMapelScore[]=[]):AcademicGradeRecord=>({
-  nis,tahunAjaran,semester,mapelScores,
-  madrasatulQuran:{kelancaran:null,makhroj:null,tajwid:null},
-  pengajianSore:null,akhlak:'',kerajinan:'',kerapian:'',
-  absensi:{sakit:null,izin:null,alpha:null},ranking:null,catatan:'',keputusan:'',musrif:'',
+const PREFIX = 'annajiyah_prod_grade_';
+const key = (tahunAjaran: string, semester: 'Ganjil' | 'Genap', nis: string) =>
+  `${PREFIX}${tahunAjaran}_${semester}_${nis}`;
+
+const emptyPengajianSore = (): PengajianSoreScore[] => [
+  { no: 1, nilai: null },
+  { no: 2, nilai: null },
+  { no: 3, nilai: null },
+];
+
+const emptyRecord = (
+  nis: string,
+  tahunAjaran: string,
+  semester: 'Ganjil' | 'Genap',
+  mapelScores: AcademicMapelScore[] = [],
+): AcademicGradeRecord => ({
+  nis,
+  tahunAjaran,
+  semester,
+  mapelScores,
+  muhafadzoh: { kitab: '', batasan: '', jumlahNilai: null, rataRata: null },
+  pengajianSore: emptyPengajianSore(),
+  kelakuan: '',
+  kerajinan: '',
+  kerapian: '',
+  absensi: { sakit: null, izin: null, tanpaKeterangan: null },
+  ranking: null,
+  jumlahSiswa: null,
+  catatan: '',
+  keputusan: '',
+  waliKelas: '',
 });
 
-export const academicGradeService={
-  get(nis:string,tahunAjaran:string,semester:'Ganjil'|'Genap',defaultMapels:AcademicMapelScore[]=[]):AcademicGradeRecord{
-    try{
-      const raw=localStorage.getItem(key(tahunAjaran,semester,nis));
-      if(!raw)return emptyRecord(nis,tahunAjaran,semester,defaultMapels);
-      const parsed=JSON.parse(raw) as Partial<AcademicGradeRecord>;
-      const base=emptyRecord(nis,tahunAjaran,semester,defaultMapels);
-      return {...base,...parsed,nis,tahunAjaran,semester,
-        mapelScores:Array.isArray(parsed.mapelScores)&&parsed.mapelScores.length?parsed.mapelScores:defaultMapels,
-        madrasatulQuran:{kelancaran:parsed.madrasatulQuran?.kelancaran??null,makhroj:parsed.madrasatulQuran?.makhroj??null,tajwid:parsed.madrasatulQuran?.tajwid??null},
-        absensi:{sakit:parsed.absensi?.sakit??null,izin:parsed.absensi?.izin??null,alpha:parsed.absensi?.alpha??null},
-        akhlak:parsed.akhlak||'',kerajinan:parsed.kerajinan||'',kerapian:parsed.kerapian||'',
+/**
+ * Transitional client persistence for the production-cleanup branch.
+ * No sample values are generated here. This service will be replaced by the
+ * authenticated API/MySQL repository before the branch is considered ready.
+ */
+export const academicGradeService = {
+  get(
+    nis: string,
+    tahunAjaran: string,
+    semester: 'Ganjil' | 'Genap',
+    defaultMapels: AcademicMapelScore[] = [],
+  ): AcademicGradeRecord {
+    const base = emptyRecord(nis, tahunAjaran, semester, defaultMapels);
+    try {
+      const raw = localStorage.getItem(key(tahunAjaran, semester, nis));
+      if (!raw) return base;
+
+      const parsed = JSON.parse(raw) as Partial<AcademicGradeRecord>;
+      const pengajianSore = Array.isArray(parsed.pengajianSore)
+        ? parsed.pengajianSore.slice(0, 3).map((row, index) => ({
+            no: (index + 1) as 1 | 2 | 3,
+            nilai: typeof row?.nilai === 'number' ? row.nilai : null,
+          }))
+        : emptyPengajianSore();
+
+      while (pengajianSore.length < 3) {
+        pengajianSore.push({ no: (pengajianSore.length + 1) as 1 | 2 | 3, nilai: null });
+      }
+
+      return {
+        ...base,
+        ...parsed,
+        nis,
+        tahunAjaran,
+        semester,
+        mapelScores:
+          Array.isArray(parsed.mapelScores) && parsed.mapelScores.length
+            ? parsed.mapelScores
+            : defaultMapels,
+        muhafadzoh: {
+          kitab: parsed.muhafadzoh?.kitab ?? '',
+          batasan: parsed.muhafadzoh?.batasan ?? '',
+          jumlahNilai: parsed.muhafadzoh?.jumlahNilai ?? null,
+          rataRata: parsed.muhafadzoh?.rataRata ?? null,
+        },
+        pengajianSore,
+        kelakuan: parsed.kelakuan ?? '',
+        kerajinan: parsed.kerajinan ?? '',
+        kerapian: parsed.kerapian ?? '',
+        absensi: {
+          sakit: parsed.absensi?.sakit ?? null,
+          izin: parsed.absensi?.izin ?? null,
+          tanpaKeterangan: parsed.absensi?.tanpaKeterangan ?? null,
+        },
       };
-    }catch{return emptyRecord(nis,tahunAjaran,semester,defaultMapels)}
+    } catch {
+      return base;
+    }
   },
-  save(record:AcademicGradeRecord):void{localStorage.setItem(key(record.tahunAjaran,record.semester,record.nis),JSON.stringify(record));},
+
+  save(record: AcademicGradeRecord): void {
+    localStorage.setItem(
+      key(record.tahunAjaran, record.semester, record.nis),
+      JSON.stringify(record),
+    );
+  },
 };
