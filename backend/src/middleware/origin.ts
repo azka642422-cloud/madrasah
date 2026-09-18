@@ -1,0 +1,1 @@
+import type{RequestHandler}from'express';import{env}from'../config/env.js';const allowed=new URL(env.FRONTEND_ORIGIN).origin;export const requireTrustedOrigin:RequestHandler=(req,res,next)=>{if(['GET','HEAD','OPTIONS'].includes(req.method)){next();return}const origin=req.get('origin');if(!origin||origin!==allowed){res.status(403).json({error:'UNTRUSTED_ORIGIN'});return}next()};

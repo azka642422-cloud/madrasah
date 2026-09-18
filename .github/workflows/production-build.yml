@@ -1,0 +1,173 @@
+name: Production Build
+
+on:
+  push:
+    branches:
+      - main
+      - refactor/fondasi-production
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: madrasah_ci
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Reject high severity production dependency vulnerabilities
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Typecheck backend and frontend
+        run: npm run typecheck
+
+      - name: Build backend and frontend
+        run: npm run build
+
+      - name: Install Chromium for print regression
+        run: npx playwright install --with-deps chromium
+
+      - name: Verify A4 report and certificate print contract
+        run: npm run test:browser
+
+      - name: Apply and repeat tracked migrations on clean MySQL
+        env:
+          DB_HOST: 127.0.0.1
+          DB_NAME: madrasah_ci
+          DB_USER: root
+          DB_PASSWORD: root
+        run: |
+          npm run db:migrate
+          npm run db:migrate
+
+      - name: Apply structural role and permission seed
+        env:
+          MYSQL_PWD: root
+        run: mysql -h 127.0.0.1 -uroot madrasah_ci < database/seeds/001_roles_permissions.sql
+
+      - name: Verify critical final schema
+        env:
+          MYSQL_PWD: root
+        run: |
+          set -euo pipefail
+          mysql -h 127.0.0.1 -uroot -N -B madrasah_ci -e "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='madrasah_ci' AND TABLE_NAME='users' AND COLUMN_NAME='session_version';" | grep -qx '1'
+          mysql -h 127.0.0.1 -uroot -N -B madrasah_ci -e "SELECT COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='madrasah_ci' AND TABLE_NAME='student_enrollments' AND COLUMN_NAME='status';" | grep -q "'WITHDRAWN'"
+          mysql -h 127.0.0.1 -uroot -N -B madrasah_ci -e "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA='madrasah_ci' AND TABLE_NAME IN ('academic_terms','import_batches','import_grade_rows');" | grep -qx '3'
+          mysql -h 127.0.0.1 -uroot -N -B madrasah_ci -e "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='madrasah_ci' AND TABLE_NAME='certificates' AND COLUMN_NAME IN ('hijri_academic_year','hijri_final_exam_period');" | grep -qx '2'
+
+      - name: Verify four-role import permission isolation
+        env:
+          MYSQL_PWD: root
+        run: |
+          set -euo pipefail
+          IMPORTS="'students.import.manage','attendance.import.manage','grades.import.manage','muhafadloh.import.manage'"
+          mysql -h 127.0.0.1 -uroot -N -B madrasah_ci -e "SELECT COUNT(*) FROM role_permissions rp JOIN roles r ON r.id=rp.role_id JOIN permissions p ON p.id=rp.permission_id WHERE r.code='SUPER_ADMIN' AND p.code IN (${IMPORTS});" | grep -qx '4'
+          mysql -h 127.0.0.1 -uroot -N -B madrasah_ci -e "SELECT COUNT(*) FROM role_permissions rp JOIN roles r ON r.id=rp.role_id JOIN permissions p ON p.id=rp.permission_id WHERE r.code='ADMIN' AND p.code IN (${IMPORTS});" | grep -qx '4'
+          mysql -h 127.0.0.1 -uroot -N -B madrasah_ci -e "SELECT COUNT(*) FROM role_permissions rp JOIN roles r ON r.id=rp.role_id JOIN permissions p ON p.id=rp.permission_id WHERE r.code='GURU' AND p.code IN (${IMPORTS});" | grep -qx '0'
+          mysql -h 127.0.0.1 -uroot -N -B madrasah_ci -e "SELECT COUNT(*) FROM role_permissions rp JOIN roles r ON r.id=rp.role_id JOIN permissions p ON p.id=rp.permission_id WHERE r.code='SANTRI' AND p.code IN (${IMPORTS});" | grep -qx '0'
+          mysql -h 127.0.0.1 -uroot -N -B madrasah_ci -e "SELECT COUNT(*) FROM role_permissions rp JOIN roles r ON r.id=rp.role_id JOIN permissions p ON p.id=rp.permission_id WHERE r.code='ADMIN' AND p.code IN ('system.settings.manage','integrations.manage','app.configuration.manage','feature.configuration.manage','system.audit.read','superadmin.accounts.manage');" | grep -qx '0'
+          mysql -h 127.0.0.1 -uroot -N -B madrasah_ci -e "SELECT COUNT(*) FROM role_permissions rp JOIN roles r ON r.id=rp.role_id JOIN permissions p ON p.id=rp.permission_id WHERE r.code='SANTRI' AND p.code<>'own.academic.read';" | grep -qx '0'
+
+      - name: Verify production environment fails closed
+        env:
+          NODE_ENV: production
+          PORT: 3999
+          FRONTEND_ORIGIN: http://insecure.example.test
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_NAME: madrasah_ci
+          DB_USER: root
+          DB_PASSWORD: root
+          AUTH_JWT_SECRET: CHANGE_ME_WITH_A_RANDOM_SECRET_AT_LEAST_32_CHARACTERS
+          AUTH_COOKIE_NAME: madin_session
+          AUTH_TOKEN_MINUTES: 60
+          UPLOAD_ROOT: /tmp/madrasah-ci-uploads
+        run: |
+          set -euo pipefail
+          if node backend/dist/server.js >/tmp/unsafe-production.log 2>&1; then
+            echo "Unsafe production environment unexpectedly started"
+            cat /tmp/unsafe-production.log
+            exit 1
+          fi
+          grep -Eq 'FRONTEND_ORIGIN must use HTTPS|AUTH_JWT_SECRET must be a strong production secret' /tmp/unsafe-production.log
+
+      - name: Start API for authorization integration tests
+        env:
+          NODE_ENV: test
+          PORT: 3000
+          FRONTEND_ORIGIN: http://127.0.0.1:5173
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_NAME: madrasah_ci
+          DB_USER: root
+          DB_PASSWORD: root
+          AUTH_JWT_SECRET: ci-only-authorization-secret-0123456789abcdef
+          AUTH_COOKIE_NAME: madin_session
+          AUTH_TOKEN_MINUTES: 60
+          MYSQL_PWD: root
+        run: |
+          nohup node backend/dist/server.js >/tmp/madrasah-api.log 2>&1 &
+          for i in {1..20}; do
+            if curl -fsS http://127.0.0.1:3000/api/health >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/madrasah-api.log
+          exit 1
+
+      - name: Verify live API cross-role and IDOR isolation
+        env:
+          MYSQL_PWD: root
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_NAME: madrasah_ci
+          DB_USER: root
+          API_URL: http://127.0.0.1:3000
+        run: bash tests/authorization/api-role-isolation.sh
+
+      - name: Verify certificate lifecycle against live API and MySQL
+        env:
+          MYSQL_PWD: root
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_NAME: madrasah_ci
+          DB_USER: root
+          API_URL: http://127.0.0.1:3000
+          FRONTEND_ORIGIN: http://127.0.0.1:5173
+        run: bash tests/integration/certificate-lifecycle.sh
+
+      - name: Verify production regression protections against MySQL and live API
+        env:
+          NODE_ENV: test
+          MYSQL_PWD: root
+          DB_HOST: 127.0.0.1
+          DB_NAME: madrasah_ci
+          DB_USER: root
+          API_URL: http://127.0.0.1:3000
+          AUTH_JWT_SECRET: ci-only-authorization-secret-0123456789abcdef
+        run: node tests/integration/production-regressions.mjs
