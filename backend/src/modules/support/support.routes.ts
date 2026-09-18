@@ -41,29 +41,36 @@ supportRouter.post(
   "/calendar",
   requirePermission("schedules.manage"),
   async (req, res, next) => {
+    const x = calendarSchema.safeParse(req.body);
+    if (!x.success) {
+      res.status(400).json({ error: "INVALID_CALENDAR_EVENT" });
+      return;
+    }
+    const conn = await db.getConnection();
     try {
-      const x = calendarSchema.safeParse(req.body);
-      if (!x.success) {
-        res.status(400).json({ error: "INVALID_CALENDAR_EVENT" });
-        return;
-      }
-      const p = x.data,
-        [r]: any = await db.execute(
-          `INSERT INTO calendar_events(academic_year_id,title,category,starts_on,ends_on,locks_attendance,description,created_by) VALUES(?,?,?,?,?,?,?,?)`,
-          [
-            p.academicYearId ?? null,
-            p.title,
-            p.category,
-            p.startsOn,
-            p.endsOn,
-            p.locksAttendance,
-            p.description ?? null,
-            req.auth!.userId,
-          ],
-        );
+      const p = x.data;
+      await conn.beginTransaction();
+      const [r]: any = await conn.execute(
+        `INSERT INTO calendar_events(academic_year_id,title,category,starts_on,ends_on,locks_attendance,description,created_by) VALUES(?,?,?,?,?,?,?,?)`,
+        [
+          p.academicYearId ?? null,
+          p.title,
+          p.category,
+          p.startsOn,
+          p.endsOn,
+          p.locksAttendance,
+          p.description ?? null,
+          req.auth!.userId,
+        ],
+      );
+      await writeAudit(req,{action:"CALENDAR.CREATED",entityType:"calendar_event",entityId:r.insertId,metadata:{title:p.title,category:p.category,startsOn:p.startsOn,endsOn:p.endsOn}},conn);
+      await conn.commit();
       res.status(201).json({ id: r.insertId });
     } catch (e) {
+      await conn.rollback();
       next(e);
+    } finally {
+      conn.release();
     }
   },
 );
@@ -112,20 +119,27 @@ supportRouter.post(
   "/announcements",
   requirePermission("announcements.manage"),
   async (req, res, next) => {
+    const x = ann.safeParse(req.body);
+    if (!x.success) {
+      res.status(400).json({ error: "INVALID_ANNOUNCEMENT" });
+      return;
+    }
+    const conn = await db.getConnection();
     try {
-      const x = ann.safeParse(req.body);
-      if (!x.success) {
-        res.status(400).json({ error: "INVALID_ANNOUNCEMENT" });
-        return;
-      }
-      const p = x.data,
-        [r]: any = await db.execute(
-          `INSERT INTO announcements(title,body,audience,published_at,created_by) VALUES(?,?,?,${p.publish ? "NOW()" : "NULL"},?)`,
-          [p.title, p.body, p.audience, req.auth!.userId],
-        );
+      const p = x.data;
+      await conn.beginTransaction();
+      const [r]: any = await conn.execute(
+        `INSERT INTO announcements(title,body,audience,published_at,created_by) VALUES(?,?,?,${p.publish ? "NOW()" : "NULL"},?)`,
+        [p.title, p.body, p.audience, req.auth!.userId],
+      );
+      await writeAudit(req,{action:"ANNOUNCEMENT.CREATED",entityType:"announcement",entityId:r.insertId,metadata:{title:p.title,audience:p.audience,published:p.publish}},conn);
+      await conn.commit();
       res.status(201).json({ id: r.insertId });
     } catch (e) {
+      await conn.rollback();
       next(e);
+    } finally {
+      conn.release();
     }
   },
 );
