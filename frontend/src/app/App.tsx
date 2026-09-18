@@ -11,6 +11,7 @@ import ReportSignatureManager from "../features/reports/ReportSignatureManager";
 import CertificatePage from "../features/certificates/CertificatePage";
 import StudentImportReview from "../features/production/StudentImportReview";
 import DocumentsPage from "../features/production/DocumentsPage";
+import StudentsPage from "../features/production/StudentsPage";
 import "./app.css";
 type Role = "SUPER_ADMIN" | "ADMIN" | "GURU" | "SANTRI";
 type User = { username: string; role: Role; mustChangePassword: boolean };
@@ -242,6 +243,8 @@ export default function App() {
         <p>Selamat datang, {user.username}. Data mengikuti hak akses akun.</p>
       </section>
     );
+  else if (page === "Santri" && (user.role === "ADMIN" || user.role === "SUPER_ADMIN"))
+    content = <StudentsPage />;
   else if (
     page === "Akun" &&
     (user.role === "ADMIN" || user.role === "SUPER_ADMIN")
