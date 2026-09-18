@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import mysql from 'mysql2/promise';
 import jwt from 'jsonwebtoken';
+import{PDFDocument}from'pdf-lib';
 const dbName=process.env.DB_NAME;
 if(process.env.NODE_ENV!=='test'||!dbName||!/_ci$/.test(dbName))throw Error('Tests require NODE_ENV=test and an isolated *_ci database');
 const db=await mysql.createConnection({host:process.env.DB_HOST??'127.0.0.1',user:process.env.DB_USER??'root',password:process.env.DB_PASSWORD??process.env.MYSQL_PWD,database:dbName,dateStrings:true});
@@ -32,11 +33,32 @@ try{
  await expect(409,admin,'POST','/classes/enrollments',{studentId:student.id,academicYearId:student.academic_year_id,classId:student.class_id,status:'ACTIVE'});
  const key={studentId:student.id,academicYearId:student.academic_year_id,semester:'GANJIL'};
  const draft=await expect(201,admin,'POST','/reports/draft',key);
- // Model an already published artifact; refresh must preserve its exact snapshot.
- await db.execute("UPDATE reports SET status='PUBLISHED',snapshot_json=JSON_OBJECT('regression','immutable') WHERE id=?",[draft.id]);
+
+ const[teachers]=await db.query("SELECT id FROM teachers WHERE code='T-G1'");
+ await expect(201,admin,'POST','/classes/homeroom-assignments',{teacherId:teachers[0].id,classId:student.class_id,academicYearId:student.academic_year_id,assignmentType:'WALI_KELAS'});
+ await expect(204,admin,'PUT',`/academic-years/${student.academic_year_id}/term`,{semester:'GANJIL',startsOn:'2026-07-01',endsOn:'2026-12-31'});
+ await expect(409,admin,'PUT',`/academic-years/${student.academic_year_id}/term`,{semester:'GENAP',startsOn:'2026-12-01',endsOn:'2027-06-30'});
+ const assessment={...key,mqKelancaran:null,mqMakhroj:null,mqTajwid:null,pengajianSore:0,kerajinan:'TEST',kerapian:'TEST',kelakuan:'TEST',catatan:null,keputusan:null};
+ await expect(204,admin,'PUT','/reports/assessment',assessment);
+ await expect(204,admin,'PUT','/attendance',{studentId:student.id,attendanceDate:'2026-09-10',status:'H'});
+ const pdf=await PDFDocument.create();pdf.addPage([200,80]);const bytes=await pdf.save();const form=new FormData();form.set('signerRole','KEPALA_MADRASAH');form.set('signerName','TEST ONLY');form.set('signerTitle','TEST ONLY');form.set('file',new Blob([bytes],{type:'application/pdf'}),'test-only.pdf');
+ const uploaded=await fetch(api+'/api/reports/signatures',{method:'POST',headers:{Origin:origin,Cookie:'madin_session='+admin},body:form});assert.equal(uploaded.status,201,await uploaded.text());
+ const results=await Promise.all([call(admin,'POST','/reports/draft',key),call(admin,'POST',`/reports/${draft.id}/publish`)]);
+ assert.equal(results[1].status,204,JSON.stringify(results));assert.ok([200,409].includes(results[0].status),JSON.stringify(results));
+ const[[report]]=await db.query('SELECT status,snapshot_json FROM reports WHERE id=?',[draft.id]);assert.equal(report.status,'PUBLISHED');assert.equal(Number(report.snapshot_json.grades[0].score),0);
  await expect(409,admin,'POST','/reports/draft',key);
- const[[report]]=await db.query('SELECT status,snapshot_json FROM reports WHERE id=?',[draft.id]);assert.equal(report.status,'PUBLISHED');assert.deepEqual(report.snapshot_json,{regression:'immutable'});
- await expect(409,admin,'PUT','/reports/assessment',{...key,mqKelancaran:null,mqMakhroj:null,mqTajwid:null,pengajianSore:0,kerajinan:'TEST',kerapian:'TEST',kelakuan:'TEST',catatan:null,keputusan:null});
+ await expect(409,admin,'PUT','/reports/assessment',assessment);
+ const lockedSignature=await fetch(api+`/api/reports/${draft.id}/signature/kepala`,{headers:{Cookie:'madin_session='+admin}});assert.equal(lockedSignature.status,200);
+ const t=await expect(201,admin,'POST','/operations/teachers',{code:'REG-NEW',name:'REGRESSION TEST ONLY',nip_or_identifier:null,status:'ACTIVE'});
+ await expect(200,admin,'PUT','/operations/teachers/'+t.id,{code:'REG-NEW',name:'REGRESSION TEST EDITED',nip_or_identifier:null,status:'INACTIVE'});
+ const yy=await expect(201,admin,'POST','/operations/years',{name:'2090/2091 TEST',starts_on:'2090-07-01',ends_on:'2091-06-30',is_active:false});assert.ok(yy.id);
+ await expect(409,admin,'POST','/operations/years',{name:'OVERLAP TEST',starts_on:'2090-08-01',ends_on:'2091-07-01',is_active:false});
+ const[assignments]=await db.query('SELECT id FROM teaching_assignments WHERE class_id=? AND academic_year_id=?',[student.class_id,student.academic_year_id]);
+ const schedule={teachingAssignmentId:assignments[0].id,dayOfWeek:'SENIN',startsAt:'12:00',endsAt:'13:00'};
+ const schedules=await Promise.all([call(admin,'POST','/schedules',schedule),call(admin,'POST','/schedules',schedule)]);assert.deepEqual(schedules.map(r=>r.status).sort(),[201,409]);
+ // Rollback is verified with an actual database audit failure.
+ await db.query("CREATE TRIGGER regression_audit_failure BEFORE INSERT ON audit_logs FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='REGRESSION TEST AUDIT FAILURE'");
+ try{await expect(500,admin,'POST','/operations/teachers',{code:'AUDIT-ROLLBACK',name:'TEST ROLLBACK',nip_or_identifier:null,status:'ACTIVE'});const[[n]]=await db.query("SELECT COUNT(*) n FROM teachers WHERE code='AUDIT-ROLLBACK'");assert.equal(n.n,0)}finally{await db.query('DROP TRIGGER regression_audit_failure')}
  const[[y]]=await db.query('SELECT starts_on FROM academic_years WHERE id=?',[student.academic_year_id]);assert.equal(y.starts_on,'2026-07-01');
  const years=await expect(200,admin,'GET','/academic-years');assert.ok(years.academicYears.some(y=>y.starts_on==='2026-07-01'));
  // A copied cookie must stop working after logout.

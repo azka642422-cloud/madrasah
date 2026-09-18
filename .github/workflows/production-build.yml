@@ -47,15 +47,15 @@ jobs:
       - name: Build backend and frontend
         run: npm run build
 
-      - name: Apply database migrations on clean MySQL
+      - name: Apply and repeat tracked migrations on clean MySQL
         env:
-          MYSQL_PWD: root
+          DB_HOST: 127.0.0.1
+          DB_NAME: madrasah_ci
+          DB_USER: root
+          DB_PASSWORD: root
         run: |
-          set -euo pipefail
-          for migration in database/migrations/*.sql; do
-            echo "Applying ${migration}"
-            mysql -h 127.0.0.1 -uroot madrasah_ci < "${migration}"
-          done
+          npm run db:migrate
+          npm run db:migrate
 
       - name: Apply structural role and permission seed
         env:

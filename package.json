@@ -12,9 +12,15 @@
     "typecheck:backend": "npm run typecheck --workspace backend",
     "typecheck:frontend": "npm run typecheck --workspace frontend",
     "build:backend": "npm run build --workspace backend",
-    "build:frontend": "npm run build --workspace frontend"
+    "build:frontend": "npm run build --workspace frontend",
+    "db:migrate": "node scripts/production/migrate.mjs",
+    "bootstrap:admin": "node scripts/production/bootstrap-admin.mjs",
+    "test:browser": "playwright test"
   },
   "engines": {
     "node": ">=20"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0"
   }
 }

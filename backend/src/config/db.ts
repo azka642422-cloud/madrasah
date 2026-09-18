@@ -12,6 +12,7 @@ export const db = mysql.createPool({
   queueLimit: 0,
   charset: 'utf8mb4',
   dateStrings: true,
+  decimalNumbers: true,
   timezone: '+07:00',
   supportBigNumbers: true,
 });
