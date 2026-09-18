@@ -267,6 +267,11 @@ export default function App() {
     (user.role === "ADMIN" || user.role === "SUPER_ADMIN")
   )
     content = <StudentImportReview />;
+  else if (
+    page === "Pengaturan" &&
+    (user.role === "ADMIN" || user.role === "SUPER_ADMIN")
+  )
+    content = <OperationsPage initial="years" />;
   else if (page === "Dokumen") content = <DocumentsPage role={user.role} />;
   else if (page === "Raport") content = <ReportPage role={user.role} />;
   else if (page === "Ijazah") content = <CertificatePage role={user.role} />;
