@@ -251,7 +251,7 @@ export default function App() {
   )
     content = <AccountsPage role={user.role} />;
   else if (
-    ["Guru", "Kelas", "Pengaturan"].includes(page) &&
+    ["Guru", "Kelas"].includes(page) &&
     (user.role === "ADMIN" || user.role === "SUPER_ADMIN")
   )
     content = (
