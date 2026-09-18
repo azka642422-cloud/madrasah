@@ -43,6 +43,12 @@ try{
  await expect(204,admin,'PUT','/attendance',{studentId:student.id,attendanceDate:'2026-09-10',status:'H'});
  const pdf=await PDFDocument.create();pdf.addPage([200,80]);const bytes=await pdf.save();const form=new FormData();form.set('signerRole','KEPALA_MADRASAH');form.set('signerName','TEST ONLY');form.set('signerTitle','TEST ONLY');form.set('file',new Blob([bytes],{type:'application/pdf'}),'test-only.pdf');
  const uploaded=await fetch(api+'/api/reports/signatures',{method:'POST',headers:{Origin:origin,Cookie:'madin_session='+admin},body:form});assert.equal(uploaded.status,201,await uploaded.text());
+ const documentForm=new FormData();documentForm.set('category','MATERI');documentForm.set('title','REGRESSION DOCUMENT');documentForm.set('description','TEST ONLY');documentForm.set('audience','GURU');documentForm.set('file',new Blob([bytes],{type:'application/pdf'}),'document-test-only.pdf');
+ const documentUpload=await fetch(api+'/api/storage/documents',{method:'POST',headers:{Origin:origin,Cookie:'madin_session='+admin},body:documentForm});assert.equal(documentUpload.status,201,await documentUpload.text());const documentId=(await documentUpload.json()).id;
+ const draftDocuments=await expect(200,admin,'GET','/support/documents');assert.ok(draftDocuments.documents.some(d=>d.id===documentId&&!d.published));
+ await expect(204,admin,'PATCH',`/storage/documents/${documentId}/publish`);
+ const[[publishedDocument]]=await db.query('SELECT published FROM documents WHERE id=?',[documentId]);assert.equal(publishedDocument.published,1);
+ const[[documentAudit]]=await db.query("SELECT COUNT(*) n FROM audit_logs WHERE action='DOCUMENT.PUBLISHED' AND entity_id=?",[documentId]);assert.equal(documentAudit.n,1);
  const results=await Promise.all([call(admin,'POST','/reports/draft',key),call(admin,'POST',`/reports/${draft.id}/publish`)]);
  assert.equal(results[1].status,204,JSON.stringify(results));assert.ok([200,409].includes(results[0].status),JSON.stringify(results));
  const[[report]]=await db.query('SELECT status,snapshot_json FROM reports WHERE id=?',[draft.id]);assert.equal(report.status,'PUBLISHED');assert.equal(Number(report.snapshot_json.grades[0].score),0);

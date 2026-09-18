@@ -240,6 +240,59 @@ storageRouter.post(
     }
   },
 );
+storageRouter.patch(
+  "/documents/:id/publish",
+  requirePermission("documents.manage"),
+  async (req, res, next) => {
+    const conn = await db.getConnection();
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isSafeInteger(id) || id <= 0) {
+        res.status(400).json({ error: "INVALID_DOCUMENT_ID" });
+        return;
+      }
+      await conn.beginTransaction();
+      const [rows]: any = await conn.query(
+        `SELECT id,title,audience,published FROM documents WHERE id=? LIMIT 1 FOR UPDATE`,
+        [id],
+      );
+      const document = rows[0];
+      if (!document) {
+        await conn.rollback();
+        res.status(404).json({ error: "DOCUMENT_NOT_FOUND" });
+        return;
+      }
+      if (
+        document.audience === "SUPER_ADMIN" &&
+        req.auth!.role !== "SUPER_ADMIN"
+      ) {
+        await conn.rollback();
+        res.status(403).json({ error: "DOCUMENT_FORBIDDEN" });
+        return;
+      }
+      if (!document.published) {
+        await conn.execute(`UPDATE documents SET published=1 WHERE id=?`, [id]);
+        await writeAudit(
+          req,
+          {
+            action: "DOCUMENT.PUBLISHED",
+            entityType: "document",
+            entityId: id,
+            metadata: { title: document.title, audience: document.audience },
+          },
+          conn,
+        );
+      }
+      await conn.commit();
+      res.status(204).end();
+    } catch (e) {
+      await conn.rollback();
+      next(e);
+    } finally {
+      conn.release();
+    }
+  },
+);
 storageRouter.get("/documents/:id/file", async (req, res, next) => {
   try {
     const id = Number(req.params.id);
@@ -259,10 +312,14 @@ storageRouter.get("/documents/:id/file", async (req, res, next) => {
       res.status(404).json({ error: "DOCUMENT_NOT_FOUND" });
       return;
     }
+    const managesDocuments = req.auth!.permissions.includes("documents.manage");
     const allowed =
       d.audience === "ALL" ||
       d.audience === req.auth!.role ||
-      (req.auth!.role === "SUPER_ADMIN" && d.audience === "ADMIN");
+      req.auth!.role === "SUPER_ADMIN" ||
+      (req.auth!.role === "ADMIN" &&
+        managesDocuments &&
+        d.audience !== "SUPER_ADMIN");
     if (!allowed) {
       res.status(403).json({ error: "DOCUMENT_FORBIDDEN" });
       return;
