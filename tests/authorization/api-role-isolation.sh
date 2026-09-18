@@ -133,4 +133,11 @@ for action in AUTH.LOGIN AUTH.PASSWORD_CHANGED AUTH.LOGOUT; do
   test "$N" -ge 1 || { echo "AUDIT_EVENT_MISSING: $action" >&2; exit 1; }
 done
 
+
+# Static regression guard: sensitive management workflows must retain explicit role middleware.
+REPORT_ROUTE=$(grep -F "reportRouter.get('/workflow',requireRole('SUPER_ADMIN','ADMIN','GURU')" backend/src/modules/reports/report.routes.ts || true)
+CERT_ROUTE=$(grep -F "certificateRouter.get('/workflow',requireRole('SUPER_ADMIN','ADMIN')" backend/src/modules/certificates/certificate.routes.ts || true)
+test -n "$REPORT_ROUTE" || { echo 'REPORT_WORKFLOW_ROLE_GUARD_MISSING' >&2; exit 1; }
+test -n "$CERT_ROUTE" || { echo 'CERTIFICATE_WORKFLOW_ROLE_GUARD_MISSING' >&2; exit 1; }
+
 echo 'Extended API role, session lifecycle, and audit isolation checks passed.'
