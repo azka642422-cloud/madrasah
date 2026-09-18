@@ -73,9 +73,9 @@ expect 403 test-guru POST '/api/reports/draft' "{\"studentId\":$STUDENT2,\"acade
 expect 200 test-santri GET '/api/reports/student/me'
 expect 403 test-guru GET '/api/reports/workflow'
 expect 403 test-santri GET '/api/reports/workflow'
+expect 403 test-santri POST '/api/reports/draft' "{\"studentId\":$STUDENT1,\"academicYearId\":$YEAR_ID,\"semester\":\"GANJIL\"}"
 expect 403 test-guru GET '/api/certificates/workflow'
 expect 403 test-santri GET '/api/certificates/workflow'
-expect 403 test-santri POST '/api/reports/draft' "{\"studentId\":$STUDENT1,\"academicYearId\":$YEAR_ID,\"semester\":\"GANJIL\"}"
 expect 403 test-guru POST '/api/certificates/draft' "{\"studentId\":$STUDENT1,\"academicYearId\":$YEAR_ID,\"graduationStatus\":\"PENDING\"}"
 expect 403 test-santri POST '/api/certificates/draft' "{\"studentId\":$STUDENT1,\"academicYearId\":$YEAR_ID,\"graduationStatus\":\"PENDING\"}"
 expect 200 test-santri GET '/api/certificates/student/me'
