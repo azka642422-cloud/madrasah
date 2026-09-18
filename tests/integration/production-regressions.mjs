@@ -56,6 +56,17 @@ try{
  const[assignments]=await db.query('SELECT id FROM teaching_assignments WHERE class_id=? AND academic_year_id=?',[student.class_id,student.academic_year_id]);
  const schedule={teachingAssignmentId:assignments[0].id,dayOfWeek:'SENIN',startsAt:'12:00',endsAt:'13:00'};
  const schedules=await Promise.all([call(admin,'POST','/schedules',schedule),call(admin,'POST','/schedules',schedule)]);assert.deepEqual(schedules.map(r=>r.status).sort(),[201,409]);
+ const muhafadlohTarget=n=>({academicYearId:student.academic_year_id,classId:student.class_id,executionNo:n,kitab:null,batasan:null,executionDate:null,status:'OPEN'});
+ const openExecutions=await Promise.all([call(admin,'PUT','/muhafadloh/targets',muhafadlohTarget(7)),call(admin,'PUT','/muhafadloh/targets',muhafadlohTarget(8))]);
+ assert.deepEqual(openExecutions.map(r=>r.status).sort(),[204,409],JSON.stringify(openExecutions));
+ assert.equal(openExecutions.find(r=>r.status===409)?.data.error,'ANOTHER_MUHAFADLOH_EXECUTION_OPEN');
+ const[[openCount]]=await db.query("SELECT COUNT(*) n FROM muhafadloh_execution_targets WHERE academic_year_id=? AND class_id=? AND status='OPEN'",[student.academic_year_id,student.class_id]);assert.equal(openCount.n,1);
+ const checksum='regression-replay-checksum';
+ await db.execute("INSERT INTO import_batches(source_type,source_name,source_checksum,status) VALUES('GRADES','REPLAY A',?,'STAGED'),('GRADES','REPLAY B',?,'STAGED')",[checksum,checksum]);
+ const[replayBatches]=await db.query("SELECT id FROM import_batches WHERE source_name IN('REPLAY A','REPLAY B') ORDER BY id");
+ for(const b of replayBatches)await db.execute("INSERT INTO import_grade_rows(batch_id,source_row_number,source_nis,source_name,source_class,source_subject,semester,score,matched_student_id,matched_subject_id,match_status) VALUES(?,1,?,'TEST',?,'TEST','GANJIL',10,?,?,'APPROVED')",[b.id,'T-NIS-1',String(student.class_id),student.id,subject.id]);
+ await expect(204,admin,'POST',`/imports/grades/${replayBatches[0].id}/approve`,{academicYearId:student.academic_year_id});
+ const replay=await expect(409,admin,'POST',`/imports/grades/${replayBatches[1].id}/approve`,{academicYearId:student.academic_year_id});assert.equal(replay.error,'IMPORT_CHECKSUM_ALREADY_APPROVED');
  // Rollback is verified with an actual database audit failure.
  await db.query("CREATE TRIGGER regression_audit_failure BEFORE INSERT ON audit_logs FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='REGRESSION TEST AUDIT FAILURE'");
  try{await expect(500,admin,'POST','/operations/teachers',{code:'AUDIT-ROLLBACK',name:'TEST ROLLBACK',nip_or_identifier:null,status:'ACTIVE'});const[[n]]=await db.query("SELECT COUNT(*) n FROM teachers WHERE code='AUDIT-ROLLBACK'");assert.equal(n.n,0)}finally{await db.query('DROP TRIGGER regression_audit_failure')}
