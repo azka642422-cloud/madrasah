@@ -13,3 +13,10 @@ Struktur target di `src/`:
 Role resmi: `SUPER_ADMIN`, `ADMIN`, `GURU`, `SANTRI`.
 
 Catatan keamanan: visibility menu hanya untuk UX. Otorisasi final wajib diputuskan backend untuk setiap request.
+
+## Konfigurasi API
+
+- Default production adalah same-origin: frontend memanggil `/api` pada origin yang sama melalui reverse proxy.
+- `VITE_API_URL` boleh diisi origin API tanpa trailing slash bila topologi deployment memang memerlukannya.
+- Upload memakai `FormData`; client tidak memaksakan header JSON untuk request multipart.
+- Semua request authenticated menggunakan `credentials: include`.

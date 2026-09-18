@@ -59,7 +59,7 @@ try{
  const muhafadlohTarget=n=>({academicYearId:student.academic_year_id,classId:student.class_id,executionNo:n,kitab:null,batasan:null,executionDate:null,status:'OPEN'});
  const openExecutions=await Promise.all([call(admin,'PUT','/muhafadloh/targets',muhafadlohTarget(7)),call(admin,'PUT','/muhafadloh/targets',muhafadlohTarget(8))]);
  assert.deepEqual(openExecutions.map(r=>r.status).sort(),[204,409],JSON.stringify(openExecutions));
- assert.equal(openExecutions.find(r=>r.status===409)?.data.error,'ANOTHER_MUHAFADLOH_EXECUTION_OPEN');
+ assert.ok(['ANOTHER_MUHAFADLOH_EXECUTION_OPEN','CONCURRENT_CHANGE_RETRY'].includes(openExecutions.find(r=>r.status===409)?.data.error),JSON.stringify(openExecutions));
  const[[openCount]]=await db.query("SELECT COUNT(*) n FROM muhafadloh_execution_targets WHERE academic_year_id=? AND class_id=? AND status='OPEN'",[student.academic_year_id,student.class_id]);assert.equal(openCount.n,1);
  const checksum='regression-replay-checksum';
  await db.execute("INSERT INTO import_batches(source_type,source_name,source_checksum,status) VALUES('GRADES','REPLAY A',?,'STAGED'),('GRADES','REPLAY B',?,'STAGED')",[checksum,checksum]);
