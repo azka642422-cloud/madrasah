@@ -50,6 +50,12 @@ jobs:
       - name: Build backend and frontend
         run: npm run build
 
+      - name: Install Chromium for print regression
+        run: npx playwright install --with-deps chromium
+
+      - name: Verify A4 report and certificate print contract
+        run: npm run test:browser
+
       - name: Apply and repeat tracked migrations on clean MySQL
         env:
           DB_HOST: 127.0.0.1
