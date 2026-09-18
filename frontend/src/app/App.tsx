@@ -1,4 +1,5 @@
 import OperationsPage from "../features/admin/OperationsPage";
+import OperationalSettingsPage from "../features/admin/OperationalSettingsPage";
 import AccountsPage from "../features/admin/AccountsPage";
 import { FormEvent, useEffect, useState } from "react";
 import { api, ApiError } from "../services/api";
@@ -271,7 +272,7 @@ export default function App() {
     page === "Pengaturan" &&
     (user.role === "ADMIN" || user.role === "SUPER_ADMIN")
   )
-    content = <OperationsPage initial="years" />;
+    content = <OperationalSettingsPage />;
   else if (page === "Dokumen") content = <DocumentsPage role={user.role} />;
   else if (page === "Raport") content = <ReportPage role={user.role} />;
   else if (page === "Ijazah") content = <CertificatePage role={user.role} />;
