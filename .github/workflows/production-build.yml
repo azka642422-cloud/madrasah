@@ -101,6 +101,7 @@ jobs:
           AUTH_JWT_SECRET: CHANGE_ME_WITH_A_RANDOM_SECRET_AT_LEAST_32_CHARACTERS
           AUTH_COOKIE_NAME: madin_session
           AUTH_TOKEN_MINUTES: 60
+          UPLOAD_ROOT: /tmp/madrasah-ci-uploads
         run: |
           set -euo pipefail
           if node backend/dist/server.js >/tmp/unsafe-production.log 2>&1; then
