@@ -11,4 +11,7 @@ export const db = mysql.createPool({
   connectionLimit: 10,
   queueLimit: 0,
   charset: 'utf8mb4',
+  dateStrings: true,
+  timezone: '+07:00',
+  supportBigNumbers: true,
 });

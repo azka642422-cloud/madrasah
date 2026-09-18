@@ -1,3 +1,4 @@
+import { writeAudit } from '../audit/audit.service.js';
 import { Router } from 'express';
 import { z } from 'zod';
 import { db } from '../../config/db.js';
@@ -53,6 +54,7 @@ studentImportRouter.put('/:batchId/review/:rowId', async (req, res, next) => {
     await conn.execute(`UPDATE import_batches SET status='REVIEW_REQUIRED' WHERE id=? AND status='STAGED'`, [b.data]);
     const ip = (req.ip || '').slice(0, 45), ua = (req.get('user-agent') || '').slice(0, 500);
     await conn.execute(`INSERT INTO audit_logs(user_id,action,entity_type,entity_id,metadata,ip_address,user_agent) VALUES(?,?,?,?,?,?,?)`, [req.auth!.userId, 'STUDENT_IMPORT.REVIEW_RESOLVED', 'import_student_row', String(row.data), JSON.stringify({ batchId: b.data, decision: x.data.decision, matchedStudentId, note: x.data.note ?? null }), ip || null, ua || null]);
+    await writeAudit(req,{action:'STUDENT_IMPORT.MUTATED',entityType:'import_batch',entityId:b.data,metadata:{path:req.path}},conn);
     await conn.commit(); res.status(204).end();
   } catch (e) { await conn.rollback(); next(e); } finally { conn.release(); }
 });
@@ -81,8 +83,11 @@ studentImportRouter.post('/:batchId/approve', async (req, res, next) => {
 
     const [bad]: any = await conn.query(`SELECT COUNT(*) n FROM import_student_rows r WHERE r.batch_id=? AND (COALESCE(r.reviewed_nis,r.source_nis) IS NULL OR TRIM(COALESCE(r.reviewed_nis,r.source_nis))='' OR TRIM(r.source_name)='' OR r.source_class IS NULL OR TRIM(r.source_class)='' OR r.match_status IN('AMBIGUOUS','EXACT_NAME_REVIEW','REVIEW','RESOLVED_HISTORICAL') OR (SELECT COUNT(*) FROM classes c WHERE UPPER(TRIM(c.code))=UPPER(TRIM(r.source_class)) AND c.active=1)<>1)`, [b.data]);
     if (Number(bad[0].n) > 0) { await conn.rollback(); return void res.status(409).json({ error: 'IMPORT_REVIEW_INCOMPLETE' }); }
-    const [result]: any = await conn.execute(`UPDATE import_batches SET status='APPROVED',approved_by=?,approved_at=NOW() WHERE id=? AND status IN('STAGED','REVIEW_REQUIRED')`, [req.auth!.userId, b.data]);
+    const [years]:any=await conn.query('SELECT id FROM academic_years WHERE is_active=1 FOR UPDATE');
+    if(years.length!==1){await conn.rollback();return void res.status(409).json({error:'EXACTLY_ONE_ACTIVE_ACADEMIC_YEAR_REQUIRED'})}
+    const [result]: any = await conn.execute(`UPDATE import_batches SET academic_year_id=?,status='APPROVED',approved_by=?,approved_at=NOW() WHERE id=? AND status IN('STAGED','REVIEW_REQUIRED')`, [years[0].id,req.auth!.userId, b.data]);
     if (result.affectedRows !== 1) { await conn.rollback(); return void res.status(409).json({ error: 'IMPORT_BATCH_STATE_CHANGED' }); }
+    await writeAudit(req,{action:'STUDENT_IMPORT.MUTATED',entityType:'import_batch',entityId:b.data,metadata:{path:req.path}},conn);
     await conn.commit(); res.status(204).end();
   } catch (e) { await conn.rollback(); next(e); } finally { conn.release(); }
 });
@@ -93,12 +98,13 @@ studentImportRouter.post('/:batchId/apply', async (req, res, next) => {
   const conn = await db.getConnection();
   try {
     await conn.beginTransaction();
-    const [batch]: any = await conn.query(`SELECT id,status FROM import_batches WHERE id=? AND source_type='WORD_STUDENT_MASTER' FOR UPDATE`, [b.data]);
+    const [batch]: any = await conn.query(`SELECT id,status,academic_year_id FROM import_batches WHERE id=? AND source_type='WORD_STUDENT_MASTER' FOR UPDATE`, [b.data]);
     if (!batch[0]) { await conn.rollback(); return void res.status(404).json({ error: 'IMPORT_BATCH_NOT_FOUND' }); }
     if (batch[0].status !== 'APPROVED') { await conn.rollback(); return void res.status(409).json({ error: 'IMPORT_BATCH_NOT_APPROVED' }); }
     const [years]: any = await conn.query(`SELECT id FROM academic_years WHERE is_active=1 FOR UPDATE`);
     if (years.length !== 1) throw new Error('EXACTLY_ONE_ACTIVE_ACADEMIC_YEAR_REQUIRED');
     const academicYearId = years[0].id;
+    if(Number(batch[0].academic_year_id)!==Number(academicYearId))throw new Error('APPROVED_ACADEMIC_YEAR_CHANGED');
     const [rows]: any = await conn.query(`SELECT id,source_nis,reviewed_nis,source_name,source_class,birth_place,birth_date,matched_student_id,match_status FROM import_student_rows WHERE batch_id=? ORDER BY source_row_number FOR UPDATE`, [b.data]);
     if (!rows.length) { await conn.rollback(); return void res.status(409).json({ error: 'IMPORT_BATCH_EMPTY' }); }
     const seenNis = new Set<string>();
@@ -143,10 +149,11 @@ studentImportRouter.post('/:batchId/apply', async (req, res, next) => {
     }
     const [result]: any = await conn.execute(`UPDATE import_batches SET status='IMPORTED' WHERE id=? AND status='APPROVED'`, [b.data]);
     if (result.affectedRows !== 1) throw new Error('IMPORT_BATCH_STATE_CHANGED');
+    await writeAudit(req,{action:'STUDENT_IMPORT.MUTATED',entityType:'import_batch',entityId:b.data,metadata:{path:req.path}},conn);
     await conn.commit(); res.status(204).end();
   } catch (e: any) {
     await conn.rollback();
-    if (['INVALID_OFFICIAL_WORD_ROW','MATCHED_STUDENT_NOT_FOUND','OFFICIAL_NIS_CONFLICT','OFFICIAL_CLASS_REQUIRES_REVIEW','EXACTLY_ONE_ACTIVE_ACADEMIC_YEAR_REQUIRED','ACTIVE_ENROLLMENT_CLASS_CONFLICT','IMPORT_BATCH_STATE_CHANGED','STUDENT_REACTIVATION_REQUIRES_REVIEW','ENROLLMENT_STATUS_REQUIRES_REVIEW','ENDED_ACTIVE_ENROLLMENT_REQUIRES_REVIEW','IMPORT_ROW_REQUIRES_REVIEW','RESOLVED_NEW_MUST_NOT_HAVE_STUDENT','RESOLVED_NEW_NIS_ALREADY_EXISTS','DUPLICATE_OFFICIAL_NIS_REQUIRES_REVIEW'].includes(e?.message)) return void res.status(409).json({ error: e.message });
+    if (['APPROVED_ACADEMIC_YEAR_CHANGED','INVALID_OFFICIAL_WORD_ROW','MATCHED_STUDENT_NOT_FOUND','OFFICIAL_NIS_CONFLICT','OFFICIAL_CLASS_REQUIRES_REVIEW','EXACTLY_ONE_ACTIVE_ACADEMIC_YEAR_REQUIRED','ACTIVE_ENROLLMENT_CLASS_CONFLICT','IMPORT_BATCH_STATE_CHANGED','STUDENT_REACTIVATION_REQUIRES_REVIEW','ENROLLMENT_STATUS_REQUIRES_REVIEW','ENDED_ACTIVE_ENROLLMENT_REQUIRES_REVIEW','IMPORT_ROW_REQUIRES_REVIEW','RESOLVED_NEW_MUST_NOT_HAVE_STUDENT','RESOLVED_NEW_NIS_ALREADY_EXISTS','DUPLICATE_OFFICIAL_NIS_REQUIRES_REVIEW'].includes(e?.message)) return void res.status(409).json({ error: e.message });
     if (e?.code === 'ER_DUP_ENTRY') return void res.status(409).json({ error: 'OFFICIAL_NIS_OR_ENROLLMENT_CONFLICT' });
     next(e);
   } finally { conn.release(); }

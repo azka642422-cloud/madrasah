@@ -39,7 +39,7 @@ jobs:
           node-version: 20
 
       - name: Install dependencies
-        run: npm install --ignore-scripts
+        run: npm ci --ignore-scripts
 
       - name: Typecheck backend and frontend
         run: npm run typecheck
@@ -128,3 +128,14 @@ jobs:
           API_URL: http://127.0.0.1:3000
           FRONTEND_ORIGIN: http://127.0.0.1:5173
         run: bash tests/integration/certificate-lifecycle.sh
+
+      - name: Verify production regression protections against MySQL and live API
+        env:
+          NODE_ENV: test
+          MYSQL_PWD: root
+          DB_HOST: 127.0.0.1
+          DB_NAME: madrasah_ci
+          DB_USER: root
+          API_URL: http://127.0.0.1:3000
+          AUTH_JWT_SECRET: ci-only-authorization-secret-0123456789abcdef
+        run: node tests/integration/production-regressions.mjs

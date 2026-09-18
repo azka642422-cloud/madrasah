@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+[[ "${DB_NAME:-}" == *_ci ]] || { echo "Requires an isolated *_ci database" >&2; exit 1; }
 
 API="${API_URL:-http://127.0.0.1:3000}"
 DB="${DB_NAME:-madrasah_ci}"

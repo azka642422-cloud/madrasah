@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+[[ "${DB_NAME:-}" == *_ci ]] || { echo "Requires an isolated *_ci database" >&2; exit 1; }
 API="${API_URL:-http://127.0.0.1:3000}"; DB="${DB_NAME:-madrasah_ci}"; ORIGIN="${FRONTEND_ORIGIN:-http://127.0.0.1:5173}"; PASS='CertificateTest123!'
 MYSQL=(mysql -h "${DB_HOST:-127.0.0.1}" -P "${DB_PORT:-3306}" -u "${DB_USER:-root}" -N -B "$DB")
 HASH=$(cd backend && node --input-type=module -e "import bcrypt from 'bcrypt'; console.log(await bcrypt.hash(process.argv[1],10))" "$PASS")
