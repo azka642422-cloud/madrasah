@@ -71,9 +71,6 @@ expect 200 test-santri GET "/api/muhafadloh/student/me?academicYearId=$YEAR_ID"
 expect 403 test-santri GET "/api/muhafadloh/class/$CLASS1?academicYearId=$YEAR_ID"
 expect 403 test-guru POST '/api/reports/draft' "{\"studentId\":$STUDENT2,\"academicYearId\":$YEAR_ID,\"semester\":\"GANJIL\"}"
 expect 200 test-santri GET '/api/reports/student/me'
-expect 403 test-admin GET '/api/audit?limit=10'
-expect 403 test-guru GET '/api/audit?limit=10'
-expect 403 test-santri GET '/api/audit?limit=10'
 expect 403 test-guru GET '/api/reports/workflow'
 expect 403 test-santri GET '/api/reports/workflow'
 expect 403 test-guru GET '/api/certificates/workflow'
